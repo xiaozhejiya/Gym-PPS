@@ -27,6 +27,9 @@ def make_env():
 
 
 def train(args):
+    # 在创建环境前校验图执行依赖，避免错误配置启动训练后才失败。
+    if args.cuda_graph and (not args.fused_adam or not torch.cuda.is_available()):
+        raise ValueError("cuda_graph requires CUDA and --fused_adam")
     if args.episodes <= 0 or args.episode_length <= 0:
         raise ValueError("episodes and episode_length must be positive")
     if args.checkpoint_interval < 0:
@@ -58,6 +61,7 @@ def train(args):
         tau=args.tau,
         device=device,
         fused_adam=args.fused_adam,
+        cuda_graph=args.cuda_graph,
     )
     prey_agent = DDPGAgent(
         obs_dim=obs_dim,
@@ -69,6 +73,7 @@ def train(args):
         tau=args.tau,
         device=device,
         fused_adam=args.fused_adam,
+        cuda_graph=args.cuda_graph,
     )
     init_model = None
     previous_steps = 0
@@ -136,7 +141,8 @@ def train(args):
         f"shared_action_dim={act_dim}, L={env.L}, device={device}, "
         f"adam_backend={'fused' if predator_agent.fused_adam else 'default'}, "
         f"previous_env_steps={previous_steps}, planned_env_steps={planned_steps}, "
-        f"target_cumulative_env_steps={previous_steps + planned_steps}, render_interval={args.render_interval}"
+        f"target_cumulative_env_steps={previous_steps + planned_steps}, render_interval={args.render_interval}, "
+        f"cuda_graph_requested={args.cuda_graph}"
     )
     total_steps = 0
     best_min_distance = float("inf")
@@ -165,6 +171,9 @@ def train(args):
                 "restored_training_state": restored_training_state,
                 "init_model": init_model,
                 "arguments": vars(args),
+                # 记录实际执行状态；图和固定输入缓冲不参与检查点序列化。
+                "cuda_graph_status": {"predator": predator_agent.cuda_graph_status,
+                                      "prey": prey_agent.cuda_graph_status},
                 "environment": {
                     name: env.get_param(name)
                     for name in ("L", "n_p", "n_e", "dynamics_mode", "pursuer_strategy", "escaper_strategy")
@@ -284,6 +293,10 @@ def train(args):
     env.close()
     print(f"Saved {args.model_path}; completed_env_steps={total_steps}, "
           f"cumulative_env_steps={previous_steps + total_steps}, rendered_episodes={rendered_episodes}")
+    if args.cuda_graph:
+        print(f"CUDA Graph: predator={predator_agent.cuda_graph_status}, "
+              f"prey={prey_agent.cuda_graph_status}, "
+              f"capture_seconds={predator_agent.graph_capture_seconds + prey_agent.graph_capture_seconds:.3f}")
 
 
 if __name__ == "__main__":
