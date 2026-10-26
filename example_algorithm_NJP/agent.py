@@ -58,6 +58,35 @@ class DDPGAgent:
             action += np.random.normal(0.0, noise_std, size=action.shape)
         return np.clip(action, -1.0, 1.0).astype(np.float32)
 
+    def load_policy(self, state_dict):
+        """加载策略并同步目标 Actor，不改动 Critic 和优化器。"""
+        self.actor.load_state_dict(state_dict)
+        self.actor_target.load_state_dict(self.actor.state_dict())
+
+    def state_dict(self):
+        """同时保存在线网络、目标网络和优化器，保留继续更新所需的训练状态。"""
+        state = {
+            name: getattr(self, name).state_dict()
+            for name in ("actor", "actor_target", "critic", "critic_target", "actor_opt", "critic_opt")
+        }
+        state.update(gamma=self.gamma, tau=self.tau)
+        return state
+
+    def load_state_dict(self, state_dict):
+        for name in ("actor", "actor_target", "critic", "critic_target"):
+            getattr(self, name).load_state_dict(state_dict[name])
+        for name in ("actor_opt", "critic_opt"):
+            optimizer_state = dict(state_dict[name])
+            # 先按当前配置选择后端，再加载优化器；这样切换后端时，Adam 步数张量
+            # 也会放在正确的设备上。复制参数组，避免改写传入的检查点配置。
+            optimizer_state["param_groups"] = [
+                dict(group, fused=True if self.fused_adam else None, foreach=None)
+                for group in optimizer_state["param_groups"]
+            ]
+            getattr(self, name).load_state_dict(optimizer_state)
+        self.gamma = state_dict["gamma"]
+        self.tau = state_dict["tau"]
+
     def update(self, replay_buffer, batch_size, return_losses=True):
         obs, action, reward, next_obs, done = replay_buffer.sample(batch_size)
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)

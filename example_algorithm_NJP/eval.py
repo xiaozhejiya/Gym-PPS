@@ -28,6 +28,8 @@ def get_args():
 
 
 def evaluate(args):
+    if args.episodes <= 0 or args.episode_length <= 0:
+        raise ValueError("episodes and episode_length must be positive")
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -42,12 +44,15 @@ def evaluate(args):
     model_path = args.model_path
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), model_path)
+    # 评估只需要两个 Actor；完整检查点先放在 CPU，避免回放缓冲占用显存。
     try:
-        checkpoint = torch.load(model_path, map_location=device, weights_only=True)
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=True)
     except TypeError:
-        checkpoint = torch.load(model_path, map_location=device)
+        checkpoint = torch.load(model_path, map_location="cpu")
     predator_agent.actor.load_state_dict(checkpoint["predator_actor"])
     prey_agent.actor.load_state_dict(checkpoint["prey_actor"])
+    # 网络权重已复制到模型，立即释放不参与评估的训练状态。
+    del checkpoint
     predator_agent.actor.eval()
     prey_agent.actor.eval()
 
@@ -62,8 +67,7 @@ def evaluate(args):
         f"shared_action_dim={act_dim}, contact_distance={contact_distance:.4f}"
     )
 
-    # for episode in range(1, args.episodes + 1):
-    for episode in range(3):
+    for episode in range(1, args.episodes + 1):
         obs = env.reset()
         predator_states = obs["predator"]
         prey_states = obs["prey"]

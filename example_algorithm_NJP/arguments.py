@@ -22,10 +22,25 @@ def get_args():
     parser.add_argument("--noise", type=float, default=0.1)
     parser.add_argument("--noise_min", type=float, default=0.05)
     parser.add_argument("--render", action="store_true")
-    # 间隔为 0 时关闭周期渲染，便于无窗口训练。
+    # 周期渲染与定期保存均按累计回合数计数；间隔为 0 时关闭对应功能。
     parser.add_argument(
         "--render_interval", type=int, default=20,
-        help="Render every N episodes; 0 disables periodic rendering.",
+        help="Render every N cumulative episodes; 0 disables periodic rendering.",
+    )
+    parser.add_argument(
+        "--total_steps", type=int, default=None,
+        # 这是本次运行新增的环境步数，不包含检查点中已经完成的训练步数。
+        help="Exact number of additional environment steps; may shorten the final episode.",
+    )
+    parser.add_argument(
+        "--checkpoint_interval", type=int, default=20,
+        help="Save the output checkpoint every N episodes; 0 disables periodic saves.",
+    )
+    parser.add_argument(
+        "--init_model",
+        type=str,
+        default=None,
+        help="Restore full training state when available; otherwise initialize both policies only.",
     )
     parser.add_argument("--model_path", type=str, default="ddpg_both_NvsN.pt")
     return parser.parse_args()
