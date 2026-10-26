@@ -1,6 +1,18 @@
 import numpy as np
 
 
+def get_dist_b2b_batch(positions, half_width, periodic, pair_sizes):
+    """Match the bundled native distance routine, including contact boundaries."""
+    positions = np.asarray(positions, dtype=np.float64)
+    delta = positions[:, :, None] - positions[:, None, :]
+    if periodic:
+        delta = make_periodic(delta, half_width)
+    center = np.sqrt(delta[0] ** 2 + delta[1] ** 2)
+    edge = np.abs(center - pair_sizes)
+    colliding = center < pair_sizes
+    return center, edge, colliding
+
+
 def make_periodic(x:np.array, L:float) -> np.array:
     x[x > L] -= 2 * L 
     x[x < -L] += 2 * L

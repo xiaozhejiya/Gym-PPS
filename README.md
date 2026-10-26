@@ -283,6 +283,8 @@ cd example_algorithm_NJP
 python train.py
 ```
 
+For optional CUDA Graph acceleration, measured throughput, and reproducible benchmarks, see [NJP training performance](example_algorithm_NJP/PERFORMANCE.md).
+
 The training should start immediately. Go grab a coffee, but make it an espresso because this won't take long. Afterward, increase `n_e` up to `25`  in `custom_param.json`, then run 
 
 ```bash
