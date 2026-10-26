@@ -113,7 +113,8 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         max_size = np.max(self._size)
         max_respawn_times = 100
         for respawn_time in range (max_respawn_times):
-            self._p = np.random.uniform(-1+max_size, 1-max_size, (2, self._n_peo))   # Initialize self._p
+            # 使用实际地图半宽生成出生点；边缘留出最大半径，避免初始越界。
+            self._p = np.random.uniform(-self._L+max_size, self._L-max_size, (2, self._n_peo))   # Initialize self._p
             if self._obstacles_is_constant:
                 self._p[:, self._n_pe:self._n_peo] = self._p_o
             self._d_b2b_center, _, _is_collide_b2b = get_dist_b2b(self._p, self._L, self._is_periodic, self._sizes)
@@ -405,7 +406,8 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(500, 500, save_frame=self._save_frame, frame_dir=self._frame_dir)
-            self.viewer.set_bounds(-1, 1, -1, 1.)
+            # 渲染范围跟随地图半宽，避免扩大地图后仍只显示中心区域。
+            self.viewer.set_bounds(-self._L, self._L, -self._L, self._L)
             
             agents = []
             self.tf = []
