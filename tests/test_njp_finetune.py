@@ -29,6 +29,25 @@ def njp():
                 sys.modules[name] = module
 
 
+@pytest.fixture
+def njp_training_env(njp, monkeypatch):
+    # 训练回归测试固定场景参数，不依赖示例配置，也不需要修改用户的训练配置文件。
+    parameters = {
+        "L": 2, "n_p": 12, "n_e": 40,
+        "dynamics_mode": "Polar", "is_periodic": True,
+        "pursuer_strategy": "input", "escaper_strategy": "input",
+        "penalize_control_effort": False, "render_traj": True,
+    }
+
+    def make_env():
+        env = gym.make("PredatorPreySwarm-v0")
+        for wrapper in (njp.MyReward, njp.MyAction, njp.MyObs):
+            env = wrapper(env, parameters)
+        return env
+
+    monkeypatch.setattr(njp, "make_env", make_env)
+
+
 @pytest.mark.parametrize("half_width", [1, 2])
 def test_spawn_uses_full_map(half_width):
     np.random.seed(7)
@@ -65,6 +84,7 @@ def test_loaded_policy_updates_target_without_changing_critic(njp):
     np.testing.assert_allclose(destination.act(observations[0]), expected[0], atol=1e-6)
 
 
+@pytest.mark.usefixtures("njp_training_env")
 @pytest.mark.parametrize("previous_training, previous_steps, previous_episodes", [
     ({}, 0, 0),
     ({"environment_steps": 6000, "episodes": 50}, 6000, 50),
@@ -205,6 +225,7 @@ def test_fused_adam_can_resume_default_and_fused_states(njp):
     assert all(torch.isfinite(p).all() for p in original.actor.parameters())
 
 
+@pytest.mark.usefixtures("njp_training_env")
 def test_exact_step_limit_headless_and_resume(njp, monkeypatch, tmp_path):
     # 从累计第 19 回合开始，覆盖第 20 回合的渲染边界和最后不足一整回合的步数。
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
