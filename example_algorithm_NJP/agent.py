@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -6,7 +8,7 @@ from networks import Actor, Critic
 
 
 class DDPGAgent:
-    """同一物种共享一套 DDPG 网络，支持批量推理和完整训练状态恢复。"""
+    """同一物种共享一套 DDPG 网络，支持批量推理。"""
 
     def __init__(
         self,
@@ -33,9 +35,14 @@ class DDPGAgent:
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.critic_target.load_state_dict(self.critic.state_dict())
 
-        backend = True if self.fused_adam else None
-        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=actor_lr, fused=backend)
-        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, fused=backend)
+        # 默认路径不传 fused 参数，兼容尚未提供该选项的 PyTorch 版本。
+        optimizer_kwargs = {}
+        if self.fused_adam:
+            if "fused" not in inspect.signature(torch.optim.Adam).parameters:
+                raise ValueError("This PyTorch version does not support --fused_adam; use --no_fused_adam.")
+            optimizer_kwargs["fused"] = True
+        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=actor_lr, **optimizer_kwargs)
+        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, **optimizer_kwargs)
 
     @torch.no_grad()
     def act(self, obs, noise_std=0.0):
@@ -50,35 +57,6 @@ class DDPGAgent:
         if noise_std > 0:
             action += np.random.normal(0.0, noise_std, size=action.shape)
         return np.clip(action, -1.0, 1.0).astype(np.float32)
-
-    def load_policy(self, state_dict):
-        """加载策略并同步目标 Actor，不改动 Critic 和优化器。"""
-        self.actor.load_state_dict(state_dict)
-        self.actor_target.load_state_dict(self.actor.state_dict())
-
-    def state_dict(self):
-        """同时保存在线网络、目标网络和优化器，保留继续更新所需的训练状态。"""
-        state = {
-            name: getattr(self, name).state_dict()
-            for name in ("actor", "actor_target", "critic", "critic_target", "actor_opt", "critic_opt")
-        }
-        state.update(gamma=self.gamma, tau=self.tau)
-        return state
-
-    def load_state_dict(self, state_dict):
-        for name in ("actor", "actor_target", "critic", "critic_target"):
-            getattr(self, name).load_state_dict(state_dict[name])
-        for name in ("actor_opt", "critic_opt"):
-            optimizer_state = dict(state_dict[name])
-            # 先按当前配置选择后端，再加载优化器；这样切换后端时，Adam 步数张量
-            # 也会放在正确的设备上。复制参数组，避免改写传入的检查点配置。
-            optimizer_state["param_groups"] = [
-                dict(group, fused=True if self.fused_adam else None, foreach=None)
-                for group in optimizer_state["param_groups"]
-            ]
-            getattr(self, name).load_state_dict(optimizer_state)
-        self.gamma = state_dict["gamma"]
-        self.tau = state_dict["tau"]
 
     def update(self, replay_buffer, batch_size, return_losses=True):
         obs, action, reward, next_obs, done = replay_buffer.sample(batch_size)
