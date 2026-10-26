@@ -4,6 +4,7 @@ import gym
 from gym import error, spaces, utils
 from .putils import *
 from gym.utils import *
+from .putils.putils import get_dist_b2b_batch
 import numpy as np
 import random
 
@@ -117,7 +118,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
             self._p = np.random.uniform(-self._L+max_size, self._L-max_size, (2, self._n_peo))   # Initialize self._p
             if self._obstacles_is_constant:
                 self._p[:, self._n_pe:self._n_peo] = self._p_o
-            self._d_b2b_center, _, _is_collide_b2b = get_dist_b2b(self._p, self._L, self._is_periodic, self._sizes)
+            self._d_b2b_center, _, _is_collide_b2b = get_dist_b2b_batch(self._p, self._L, self._is_periodic, self._sizes)
             if _is_collide_b2b.sum() == 0:
                 break
             if respawn_time == max_respawn_times-1:
@@ -287,7 +288,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
                 a[0, self._n_p:self._n_pe] *= self._angle_e_max
                 a[1, :self._n_p] =          (self._linAcc_p_max-self._linAcc_p_min)/2 * a[1,:self._n_p] +          (self._linAcc_p_max+self._linAcc_p_min)/2 
                 a[1, self._n_p:self._n_pe] = (self._linAcc_e_max-self._linAcc_e_min)/2 * a[1,self._n_p:self._n_pe] + (self._linAcc_e_max+self._linAcc_e_min)/2 
-            self._d_b2b_center, self.d_b2b_edge, self._is_collide_b2b = get_dist_b2b(self._p, self._L, self._is_periodic, self._sizes)
+            self._d_b2b_center, self.d_b2b_edge, self._is_collide_b2b = get_dist_b2b_batch(self._p, self._L, self._is_periodic, self._sizes)
             sf_b2b = self._get_ball_collision_force()
 
             if self._is_periodic == False:

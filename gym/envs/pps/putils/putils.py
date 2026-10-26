@@ -1,6 +1,20 @@
 import numpy as np
 
 
+def get_dist_b2b_batch(positions, half_width, periodic, pair_sizes):
+    """批量计算粒子间距离，保留原生函数的周期边界和接触判定规则。"""
+    # 与原生实现使用相同精度，避免接触阈值附近因类型转换改变碰撞结果。
+    positions = np.asarray(positions, dtype=np.float64)
+    delta = positions[:, :, None] - positions[:, None, :]
+    if periodic:
+        delta = make_periodic(delta, half_width)
+    center = np.sqrt(delta[0] ** 2 + delta[1] ** 2)
+    edge = np.abs(center - pair_sizes)
+    # 恰好接触不算碰撞，保持原实现的严格小于判断。
+    colliding = center < pair_sizes
+    return center, edge, colliding
+
+
 def make_periodic(x:np.array, L:float) -> np.array:
     x[x > L] -= 2 * L 
     x[x < -L] += 2 * L

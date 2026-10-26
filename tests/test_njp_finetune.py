@@ -8,25 +8,6 @@ import pytest
 import torch
 
 
-@pytest.fixture
-def njp_training_env(njp, monkeypatch):
-    # 训练回归测试固定场景参数，不依赖示例配置，也不需要修改用户的训练配置文件。
-    parameters = {
-        "L": 2, "n_p": 12, "n_e": 40,
-        "dynamics_mode": "Polar", "is_periodic": True,
-        "pursuer_strategy": "input", "escaper_strategy": "input",
-        "penalize_control_effort": False, "render_traj": True,
-    }
-
-    def make_env():
-        env = gym.make("PredatorPreySwarm-v0")
-        for wrapper in (njp.MyReward, njp.MyAction, njp.MyObs):
-            env = wrapper(env, parameters)
-        return env
-
-    monkeypatch.setattr(njp, "make_env", make_env)
-
-
 @pytest.mark.parametrize("half_width", [1, 2])
 def test_spawn_uses_full_map(half_width):
     np.random.seed(7)
