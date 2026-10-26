@@ -36,6 +36,11 @@ class ReplayBuffer:
         )
 
     def state_dict(self):
+        """保存有效样本及环形写入位置，空余容量无需写入检查点。
+
+        张量与原 NumPy 数组共享内存，调用方应在下一次写入前完成序列化。
+        使用张量还可使检查点兼容 torch.load(weights_only=True)。
+        """
         return {
             "capacity": self.capacity,
             "ptr": self.ptr,
@@ -47,6 +52,7 @@ class ReplayBuffer:
         }
 
     def load_state_dict(self, state_dict):
+        # 容量决定环形覆盖顺序；强制保持一致，才能还原后续写入和采样的行为。
         if self.capacity != state_dict["capacity"]:
             raise ValueError("buffer_size must match the saved replay buffer capacity")
         size = state_dict["size"]

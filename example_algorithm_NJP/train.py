@@ -16,6 +16,7 @@ from replay_buffer import ReplayBuffer
 
 
 def make_env():
+    # 地图半宽和双方种群规模统一从配置读取，训练与评估共用同一环境定义。
     custom_param = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom_param.json")
     env = gym.make("PredatorPreySwarm-v0")
     env = MyReward(env, custom_param)
@@ -32,6 +33,7 @@ def train(args):
         raise ValueError("checkpoint_interval must be nonnegative")
     if args.render_interval < 0:
         raise ValueError("render_interval must be nonnegative")
+    # total_steps 可缩短最后一回合，使本次新增训练步数精确落在预算内。
     planned_steps = args.episodes * args.episode_length
     if args.total_steps is not None:
         if not 0 < args.total_steps <= planned_steps:
@@ -81,9 +83,11 @@ def train(args):
         init_model = os.path.abspath(init_model)
         if init_model == output_model:
             raise ValueError("model_path must differ from init_model to preserve the source checkpoint")
+        # 完整检查点还包含大容量回放缓冲，先加载到 CPU，避免占用额外显存。
         checkpoint = torch.load(init_model, map_location="cpu", weights_only=True)
         predator_agent.load_policy(checkpoint["predator_actor"])
         prey_agent.load_policy(checkpoint["prey_actor"])
+        # 兼容旧检查点：优先取累计计数，缺失时再使用单次运行计数或从零开始。
         previous_training = checkpoint.get("training", {})
         previous_steps = previous_training.get("cumulative_environment_steps", previous_training.get("environment_steps", 0))
         previous_episodes = previous_training.get("cumulative_episodes", previous_training.get("episodes", 0))
@@ -96,6 +100,7 @@ def train(args):
                                         ("prey", prey_agent, prey_replay)):
                 agent.load_state_dict(state[name + "_agent"])
                 replay.load_state_dict(state[name + "_replay"])
+            # 网络和缓冲恢复完成后再还原随机状态，避免初始化影响后续采样序列。
             rng = state["numpy_rng"]
             np.random.set_state((rng[0], np.asarray(rng[1], dtype=np.uint32), rng[2], rng[3], rng[4]))
             torch.set_rng_state(state["torch_rng"])
@@ -122,6 +127,8 @@ def train(args):
     episode_steps = 0
 
     def save_checkpoint():
+        # 顶层 Actor 权重兼容原评估入口，training_state 用于恢复完整学习过程。
+        # 保存发生在回合结束；续训会 reset 环境，不恢复回合中间的物理状态。
         numpy_rng = np.random.get_state()
         checkpoint = {
             "predator_actor": predator_agent.actor.state_dict(),
@@ -150,11 +157,13 @@ def train(args):
                 "prey_agent": prey_agent.state_dict(),
                 "predator_replay": predator_replay.state_dict(),
                 "prey_replay": prey_replay.state_dict(),
+                # 随机状态中的 NumPy 数组转为列表，使 weights_only 加载无需额外类型。
                 "numpy_rng": (numpy_rng[0], numpy_rng[1].tolist(), *numpy_rng[2:]),
                 "torch_rng": torch.get_rng_state(),
                 "cuda_rng": torch.cuda.get_rng_state_all() if device == "cuda" else [],
             },
         }
+        # 临时文件与目标文件位于同一目录，写完后原子替换，避免中断留下半个检查点。
         temporary_path = output_model + ".tmp"
         torch.save(checkpoint, temporary_path)
         os.replace(temporary_path, output_model)
@@ -163,6 +172,7 @@ def train(args):
     for local_episode in range(1, args.episodes + 1):
         if total_steps >= planned_steps:
             break
+        # local_episode 控制本次噪声衰减，累计 episode 控制日志、渲染和保存周期。
         episode_steps = min(args.episode_length, planned_steps - total_steps)
         episode = previous_episodes + local_episode
         obs = env.reset()
@@ -183,10 +193,12 @@ def train(args):
             if render_episode:
                 env.render(mode="human")
 
+            # 已加载策略时，预热阶段仍沿用策略加探索噪声，避免退回完全随机动作。
             if total_steps < args.start_steps and init_model is None:
                 predator_actions = np.random.uniform(-1.0, 1.0, size=(env.n_p, act_dim)).astype(np.float32).T
                 prey_actions = np.random.uniform(-1.0, 1.0, size=(env.n_e, act_dim)).astype(np.float32).T
             else:
+                # 网络以个体为行，环境以动作维度为行，因此批量结果需要转置。
                 predator_actions = predator_agent.act_batch(predator_states, noise_std=noise).T
                 prey_actions = prey_agent.act_batch(prey_states, noise_std=noise).T
 
@@ -223,8 +235,10 @@ def train(args):
             min_distance = min(min_distance, float(np.min(pred_distances)))
             total_steps += 1
 
+            # 完整续训沿用已恢复的缓冲，样本足够时无需再次等待预热步数。
             if restored_training_state or total_steps >= args.start_steps:
                 for _ in range(args.updates_per_step):
+                    # 主循环不消费损失值，关闭标量回读以减少不必要的 CUDA 同步。
                     if len(predator_replay) >= args.batch_size:
                         predator_agent.update(predator_replay, args.batch_size, return_losses=False)
                     if len(prey_replay) >= args.batch_size:
@@ -239,6 +253,7 @@ def train(args):
                 f"caught={caught_once} noise={noise:.3f} cumulative_steps={previous_steps + total_steps}"
             )
         completed_episodes = local_episode
+        # 最后一回合交给循环后的统一保存，避免同一步数重复写入大检查点。
         if args.checkpoint_interval and episode % args.checkpoint_interval == 0 and total_steps < planned_steps:
             save_checkpoint()
 

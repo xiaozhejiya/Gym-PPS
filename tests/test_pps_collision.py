@@ -11,7 +11,7 @@ import pytest
 
 
 def reference_collision_force(env):
-    """Original pair loop, retained to check the optimized physics."""
+    """保留原始逐粒子对实现，作为批量碰撞计算的独立回归基准。"""
     forces = np.zeros((2 * env._n_peo, env._n_peo))
     for i in range(env._n_peo):
         for j in range(i):
@@ -66,12 +66,12 @@ def test_trajectory_matches_original(dynamics, periodic, obstacles):
         "pursuer_strategy": "input", "escaper_strategy": "input",
     })
     try:
-        # Obstacle count has no public setter in this simulator.
+        # 模拟器没有障碍物数量的公开设置入口，测试直接修改后重新初始化。
         env.unwrapped._n_o = obstacles
         env.__reinit__()
         env.reset()
         assert env.unwrapped._n_peo == 52 + obstacles
-        # Include contacts and a periodic-boundary crossing immediately.
+        # 人工布置接触粒子和地图接缝两侧的粒子，尽早覆盖碰撞与周期边界情况。
         env.unwrapped._p[:, :2] = [[0, 0.02], [0, 0.01]]
         env.unwrapped._p[:, 2:4] = [[-1.985, 1.985], [0.5, 0.5]]
         reference = deepcopy(env.unwrapped)
@@ -80,6 +80,7 @@ def test_trajectory_matches_original(dynamics, periodic, obstacles):
         for _ in range(25):
             action = rng.uniform(-1, 1, (2, env.unwrapped._n_peo))
             action[:, 52:] = 0
+            # step 会原地缩放动作；两套环境各传一份副本，避免测试输入相互污染。
             actual = env.step(action.copy())
             expected = reference.step(action.copy())
             for actual_value, expected_value in zip(actual, expected):

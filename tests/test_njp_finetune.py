@@ -11,6 +11,7 @@ import torch
 
 @pytest.fixture(scope="module")
 def njp():
+    # 示例使用 agent/train 等顶层模块名；测试前后隔离导入，避免与其他示例串扰。
     directory = Path(__file__).resolve().parents[1] / "example_algorithm_NJP"
     original_path = list(sys.path)
     names = ("agent", "arguments", "custom_env", "networks", "replay_buffer", "train")
@@ -43,6 +44,7 @@ def test_spawn_uses_full_map(half_width):
 
 
 def test_loaded_policy_updates_target_without_changing_critic(njp):
+    """检查仅加载策略的边界，并验证批量动作与直接网络推理一致。"""
     source = njp.DDPGAgent(35, 2, hidden_dim=16)
     destination = njp.DDPGAgent(35, 2, hidden_dim=16)
     critic_before = {key: value.clone() for key, value in destination.critic.state_dict().items()}
@@ -70,6 +72,7 @@ def test_loaded_policy_updates_target_without_changing_critic(njp):
       "cumulative_environment_steps": 60000, "cumulative_episodes": 500}, 60000, 500),
 ])
 def test_finetune_warmup_uses_saved_policy(njp, monkeypatch, tmp_path, previous_training, previous_steps, previous_episodes):
+    # 只训练采样阶段，确认旧检查点的策略、累计计数和源文件均被正确保留。
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     source = {}
     for species in ("predator", "prey"):
@@ -125,6 +128,7 @@ def test_finetune_warmup_uses_saved_policy(njp, monkeypatch, tmp_path, previous_
 
 
 def test_full_training_state_preserves_next_update(njp, tmp_path):
+    # 写入超过容量的样本，让缓冲发生回绕；恢复后固定采样种子比较下一次更新。
     agent = njp.DDPGAgent(35, 2, hidden_dim=16, gamma=0.93, tau=0.02)
     replay = njp.ReplayBuffer(8, 35, 2)
     rng = np.random.RandomState(81)
@@ -155,6 +159,7 @@ def test_full_training_state_preserves_next_update(njp, tmp_path):
 
 
 def test_skipping_loss_readback_preserves_updates(njp):
+    # 两个分支使用相同参数和采样序列，单独验证关闭损失回读不改变学习结果。
     from copy import deepcopy
     reference = njp.DDPGAgent(35, 2, hidden_dim=16)
     optimized = deepcopy(reference)
@@ -183,8 +188,7 @@ def test_fused_adam_can_resume_default_and_fused_states(njp):
         replay.push(rng.randn(35), rng.randn(2), rng.randn(), rng.randn(35), False)
     original.update(replay, 16, return_losses=False)
     fused = njp.DDPGAgent(35, 2, hidden_dim=16, device="cuda", fused_adam=True)
-    # state_dict() references live optimizer tensors. Keep the two branches'
-    # Adam moments independent when comparing their next update.
+    # state_dict() 引用实时优化器张量；深拷贝以隔离两组 Adam 动量，再比较下一次更新。
     fused.load_state_dict(deepcopy(original.state_dict()))
     np.random.seed(11)
     original.update(replay, 16, return_losses=False)
@@ -202,6 +206,7 @@ def test_fused_adam_can_resume_default_and_fused_states(njp):
 
 
 def test_exact_step_limit_headless_and_resume(njp, monkeypatch, tmp_path):
+    # 从累计第 19 回合开始，覆盖第 20 回合的渲染边界和最后不足一整回合的步数。
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     original_make_env = njp.make_env
 
@@ -241,6 +246,7 @@ def test_exact_step_limit_headless_and_resume(njp, monkeypatch, tmp_path):
     assert metadata["rendered_episodes"] == []
     assert metadata["restored_training_state"] is False
     resumed_outputs = []
+    # 改变启动种子后，完整检查点仍应恢复相同随机状态，得到相同的后续策略。
     for seed in (7, 81):
         resumed = tmp_path / ("resumed_" + str(seed) + ".pt")
         monkeypatch.setattr(sys, "argv", [

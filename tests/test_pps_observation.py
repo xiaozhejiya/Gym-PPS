@@ -9,7 +9,7 @@ import pytest
 
 
 def reference_observation(env):
-    """Per-agent observation calculation used before batching."""
+    """使用批处理前的逐个体计算方式，独立检查邻居筛选和观测布局。"""
     obs = np.zeros(env.observation_space.shape)
     motion = env._dp if env._dynamics_mode == "Cartesian" else env._heading
     populations = (slice(0, env._n_p), slice(env._n_p, env._n_pe))
@@ -50,7 +50,7 @@ def test_batched_observation_boundaries(counts, dynamics, periodic):
     try:
         env.reset()
         base = env.unwrapped
-        # Equal distances, coincident agents, exact view boundary, and map seam.
+        # 同时覆盖距离并列、个体重合、视野精确边界和周期地图接缝。
         special = np.array([[0, 0, 0.125, -0.125, 1.99, -1.99],
                             [0, 0, 0, 0, 0, 0]])
         length = min(base._n_pe, special.shape[1])
@@ -77,6 +77,7 @@ def test_batched_observation_trajectory(dynamics, periodic):
     try:
         env.reset()
         reference = deepcopy(env.unwrapped)
+        # 只替换参考环境的观测实现，以逐步精确比较检验批处理未改变完整轨迹。
         reference._get_obs = MethodType(reference_observation, reference)
         rng = np.random.RandomState(53)
         for _ in range(30):

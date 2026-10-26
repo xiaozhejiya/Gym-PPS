@@ -113,6 +113,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         max_size = np.max(self._size)
         max_respawn_times = 100
         for respawn_time in range (max_respawn_times):
+            # 使用实际地图半宽生成出生点；边缘留出最大半径，避免初始越界。
             self._p = np.random.uniform(-self._L+max_size, self._L-max_size, (2, self._n_peo))   # Initialize self._p
             if self._obstacles_is_constant:
                 self._p[:, self._n_pe:self._n_peo] = self._p_o
@@ -141,10 +142,14 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
 
 
     def _get_obs(self):
+        """按物种批量生成观测，保持原有邻居顺序、特征布局和零填充规则。"""
         self.obs = np.zeros(self.observation_space.shape)
+        # 只为捕食者和猎物构造观测；障碍物不作为观察者或邻居参与策略输入。
         positions = self._p[:, :self._n_pe].T
         velocities = self._dp[:, :self._n_pe].T
+        # 自身特征始终使用真实速度；邻居相对量在 Polar 模式下改用朝向差。
         headings = velocities if self._dynamics_mode == 'Cartesian' else self._heading[:, :self._n_pe].T
+        # 相对量的轴顺序为 (观察者, 候选邻居, xy)，方向为“邻居减自身”。
         relative_positions = positions[None, :, :] - positions[:, None, :]
         if self._is_periodic:
             relative_positions = make_periodic(relative_positions, self._L)
@@ -167,6 +172,8 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
                     field_of_view, width, species == neighbor_species,
                 )
                 features.append(np.concatenate((position, velocity), axis=2))
+            # 依次排列自身、捕食者邻居、猎物邻居，每个条目先放二维位置量，再放二维运动量。
+            # 最后转回 (特征维度, 个体数)，与原逐个体实现和既有策略权重兼容。
             features = np.concatenate(features, axis=1).reshape(count, -1).T
             energy_row = features.shape[0]
             self.obs[:energy_row, observers] = features
@@ -253,7 +260,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
 
 
     def _get_ball_collision_force(self):
-        # Compute each pair once, then retain the original per-particle sum order.
+        # 只计算严格下三角中的粒子对，排除自身；反向力由作用力与反作用力关系填充。
         rows, columns = np.tril_indices(self._n_peo, k=-1)
         delta = self._p[:, columns] - self._p[:, rows]
         if self._is_periodic:
@@ -265,6 +272,8 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
             * self._k_ball
             * (-direction)
         )
+        # 保留 (受力粒子, xy, 施力粒子) 布局，按原邻居顺序求和，避免浮点求和
+        # 次序变化导致长时间轨迹偏离；此处粒子也包含障碍物。
         forces = np.zeros((self._n_peo, 2, self._n_peo))
         forces[rows, :, columns] = pair_force.T
         forces[columns, :, rows] = -pair_force.T
@@ -397,6 +406,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         if self.viewer is None:
             from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(500, 500, save_frame=self._save_frame, frame_dir=self._frame_dir)
+            # 渲染范围跟随地图半宽，避免扩大地图后仍只显示中心区域。
             self.viewer.set_bounds(-self._L, self._L, -self._L, self._L)
             
             agents = []

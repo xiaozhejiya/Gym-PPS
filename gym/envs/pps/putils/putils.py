@@ -53,19 +53,21 @@ def get_focused(Pos, Vel, norm_threshold, width, remove_self):
 
 
 def get_focused_batch(positions, velocities, norm_threshold, width, remove_self):
-    """Select neighbors for (observer, candidate, xy) arrays using the scalar ordering."""
+    """输入轴为 (观察者, 候选邻居, xy)，输出固定 width 个邻居，不足时补零。"""
     shape = (positions.shape[0], width, 2)
     target_positions = np.zeros(shape)
     target_velocities = np.zeros(shape)
     norms = np.sqrt(positions[:, :, 0] ** 2 + positions[:, :, 1] ** 2)
     order = np.argsort(norms, axis=1)
-    # Valid neighbors form a prefix of the sorted list. As in get_focused,
-    # same-species observations discard the first entry, including distance ties.
+    # 同种邻居沿用 get_focused 的规则：排序后丢弃第一项，而非按个体编号排除。
+    # 即使多个距离并列为零，也必须保留这一规则，才能兼容原观测结果。
     offset = int(remove_self)
     selected = order[:, offset:offset + width]
     count = selected.shape[1]
     if count:
+        # 距离严格小于视野阈值才可见；恰好位于边界的个体也按原规则补零。
         visible = np.take_along_axis(norms, selected, axis=1) < norm_threshold
+        # 增加坐标轴以便同时提取 xy 两个分量，位置与速度使用相同邻居索引。
         selected = selected[:, :, None]
         target_positions[:, :count] = np.where(
             visible[:, :, None], np.take_along_axis(positions, selected, axis=1), 0.0,

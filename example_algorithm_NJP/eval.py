@@ -44,12 +44,14 @@ def evaluate(args):
     model_path = args.model_path
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), model_path)
+    # 评估只需要两个 Actor；完整检查点先放在 CPU，避免回放缓冲占用显存。
     try:
         checkpoint = torch.load(model_path, map_location="cpu", weights_only=True)
     except TypeError:
         checkpoint = torch.load(model_path, map_location="cpu")
     predator_agent.actor.load_state_dict(checkpoint["predator_actor"])
     prey_agent.actor.load_state_dict(checkpoint["prey_actor"])
+    # 网络权重已复制到模型，立即释放不参与评估的训练状态。
     del checkpoint
     predator_agent.actor.eval()
     prey_agent.actor.eval()
@@ -78,6 +80,7 @@ def evaluate(args):
             if args.render:
                 env.render(mode="human")
 
+            # 每个物种批量推理一次，再转成环境要求的 (动作维度, 个体数)。
             predator_actions = predator_agent.act_batch(predator_states).T
             prey_actions = prey_agent.act_batch(prey_states).T
 

@@ -6,6 +6,8 @@ from networks import Actor, Critic
 
 
 class DDPGAgent:
+    """同一物种共享一套 DDPG 网络，支持批量推理和完整训练状态恢复。"""
+
     def __init__(
         self,
         obs_dim,
@@ -21,6 +23,7 @@ class DDPGAgent:
         self.device = torch.device(device)
         self.gamma = gamma
         self.tau = tau
+        # fused Adam 仅在 CUDA 上启用；CPU 保留默认后端以兼容无 GPU 的运行环境。
         self.fused_adam = bool(fused_adam and self.device.type == "cuda")
 
         self.actor = Actor(obs_dim, act_dim, hidden_dim).to(self.device)
@@ -40,17 +43,21 @@ class DDPGAgent:
 
     @torch.no_grad()
     def act_batch(self, observations, noise_std=0.0):
+        """将 (个体数, 观测维度) 批量映射为同顺序的 (个体数, 动作维度)。"""
         obs_t = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
+        # 每个物种只做一次前向计算和结果回传，避免逐个体触发 GPU/CPU 同步。
         action = self.actor(obs_t).cpu().numpy()
         if noise_std > 0:
             action += np.random.normal(0.0, noise_std, size=action.shape)
         return np.clip(action, -1.0, 1.0).astype(np.float32)
 
     def load_policy(self, state_dict):
+        """加载策略并同步目标 Actor，不改动 Critic 和优化器。"""
         self.actor.load_state_dict(state_dict)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
     def state_dict(self):
+        """同时保存在线网络、目标网络和优化器，保留继续更新所需的训练状态。"""
         state = {
             name: getattr(self, name).state_dict()
             for name in ("actor", "actor_target", "critic", "critic_target", "actor_opt", "critic_opt")
@@ -63,8 +70,8 @@ class DDPGAgent:
             getattr(self, name).load_state_dict(state_dict[name])
         for name in ("actor_opt", "critic_opt"):
             optimizer_state = dict(state_dict[name])
-            # Select the requested backend before loading so Adam also places
-            # its step counters on the correct device when switching backends.
+            # 先按当前配置选择后端，再加载优化器；这样切换后端时，Adam 步数张量
+            # 也会放在正确的设备上。复制参数组，避免改写传入的检查点配置。
             optimizer_state["param_groups"] = [
                 dict(group, fused=True if self.fused_adam else None, foreach=None)
                 for group in optimizer_state["param_groups"]
@@ -98,6 +105,7 @@ class DDPGAgent:
 
         self._soft_update(self.actor_target, self.actor)
         self._soft_update(self.critic_target, self.critic)
+        # .item() 会等待 CUDA 结果回传；不记录损失时可跳过，梯度更新不受影响。
         if return_losses:
             return actor_loss.item(), critic_loss.item()
 
