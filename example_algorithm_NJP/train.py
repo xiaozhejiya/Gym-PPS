@@ -26,6 +26,9 @@ def make_env():
 
 
 def train(args):
+    # 在创建环境前校验图执行依赖，避免错误配置启动训练后才失败。
+    if args.cuda_graph and (not args.fused_adam or not torch.cuda.is_available()):
+        raise ValueError("cuda_graph requires CUDA and --fused_adam")
     if args.render_interval < 0:
         raise ValueError("render_interval must be nonnegative")
     np.random.seed(args.seed)
@@ -47,6 +50,7 @@ def train(args):
         tau=args.tau,
         device=device,
         fused_adam=args.fused_adam,
+        cuda_graph=args.cuda_graph,
     )
     prey_agent = DDPGAgent(
         obs_dim=obs_dim,
@@ -58,6 +62,7 @@ def train(args):
         tau=args.tau,
         device=device,
         fused_adam=args.fused_adam,
+        cuda_graph=args.cuda_graph,
     )
     predator_replay = ReplayBuffer(args.buffer_size, obs_dim, act_dim)
     prey_replay = ReplayBuffer(args.buffer_size, obs_dim, act_dim)
@@ -151,6 +156,10 @@ def train(args):
         os.path.join(os.path.dirname(__file__), args.model_path),
     )
     env.close()
+    if args.cuda_graph:
+        print(f"CUDA Graph: predator={predator_agent.cuda_graph_status}, "
+              f"prey={prey_agent.cuda_graph_status}, "
+              f"capture_seconds={predator_agent.graph_capture_seconds + prey_agent.graph_capture_seconds:.3f}")
 
 
 if __name__ == "__main__":
