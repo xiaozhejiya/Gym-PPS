@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 class ReplayBuffer:
@@ -33,3 +34,27 @@ class ReplayBuffer:
             self.next_obs[idx],
             self.dones[idx],
         )
+
+    def state_dict(self):
+        return {
+            "capacity": self.capacity,
+            "ptr": self.ptr,
+            "size": self.size,
+            "arrays": {
+                name: torch.from_numpy(getattr(self, name)[:self.size])
+                for name in ("obs", "actions", "rewards", "next_obs", "dones")
+            },
+        }
+
+    def load_state_dict(self, state_dict):
+        if self.capacity != state_dict["capacity"]:
+            raise ValueError("buffer_size must match the saved replay buffer capacity")
+        size = state_dict["size"]
+        for name in ("obs", "actions", "rewards", "next_obs", "dones"):
+            destination = getattr(self, name)
+            source = state_dict["arrays"][name].cpu().numpy()
+            if source.shape != destination[:size].shape:
+                raise ValueError("Saved replay buffer dimensions do not match the environment")
+            destination[:size] = source
+        self.ptr = state_dict["ptr"]
+        self.size = size

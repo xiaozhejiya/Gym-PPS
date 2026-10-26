@@ -50,3 +50,27 @@ def get_focused(Pos, Vel, norm_threshold, width, remove_self):
     target_Pos[:, :until_idx] = Pos[:, :until_idx] 
     target_Vel[:, :until_idx] = Vel[:, :until_idx]
     return target_Pos, target_Vel   
+
+
+def get_focused_batch(positions, velocities, norm_threshold, width, remove_self):
+    """Select neighbors for (observer, candidate, xy) arrays using the scalar ordering."""
+    shape = (positions.shape[0], width, 2)
+    target_positions = np.zeros(shape)
+    target_velocities = np.zeros(shape)
+    norms = np.sqrt(positions[:, :, 0] ** 2 + positions[:, :, 1] ** 2)
+    order = np.argsort(norms, axis=1)
+    # Valid neighbors form a prefix of the sorted list. As in get_focused,
+    # same-species observations discard the first entry, including distance ties.
+    offset = int(remove_self)
+    selected = order[:, offset:offset + width]
+    count = selected.shape[1]
+    if count:
+        visible = np.take_along_axis(norms, selected, axis=1) < norm_threshold
+        selected = selected[:, :, None]
+        target_positions[:, :count] = np.where(
+            visible[:, :, None], np.take_along_axis(positions, selected, axis=1), 0.0,
+        )
+        target_velocities[:, :count] = np.where(
+            visible[:, :, None], np.take_along_axis(velocities, selected, axis=1), 0.0,
+        )
+    return target_positions, target_velocities

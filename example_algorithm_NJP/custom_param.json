@@ -1,7 +1,8 @@
 {
     "dynamics_mode": "Polar",
-    "n_p": 3,
-    "n_e": 10,
+    "L": 2,
+    "n_p": 12,
+    "n_e": 40,
     "pursuer_strategy": "input",
     "escaper_strategy": "input",
     "is_periodic": true,
