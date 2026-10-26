@@ -1,15 +1,17 @@
-"""Arithmetic from the pre-optimization DDPG agent, used as an independent oracle."""
+"""保留优化前的 DDPG 算式，作为独立基准验证参数更新结果。"""
 import torch
 import torch.nn.functional as F
 
 
 def soft_update(self, target, source):
+    """保留原逐参数更新顺序，检查批量算式没有改变舍入结果。"""
     for target_param, source_param in zip(target.parameters(), source.parameters()):
         target_param.data.mul_(1.0 - self.tau)
         target_param.data.add_(self.tau * source_param.data)
 
 
 def update_tensors(self, batch):
+    """独立保留原训练过程，避免用待测优化实现验证自身。"""
     obs, action, reward, next_obs, done = batch
     with torch.no_grad():
         next_action = self.actor_target(next_obs)
@@ -29,6 +31,7 @@ def update_tensors(self, batch):
 
 
 def assert_exact(actual, expected, path=()):
+    """逐项精确比较训练状态，仅忽略有意切换的优化器后端标志。"""
     if torch.is_tensor(expected):
         assert actual.dtype == expected.dtype, path
         assert torch.equal(actual, expected), path

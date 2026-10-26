@@ -29,6 +29,7 @@ class DDPGAgent:
         self.tau = tau
         # fused Adam 仅在 CUDA 上启用；CPU 保留默认后端以兼容无 GPU 的运行环境。
         self.fused_adam = bool(fused_adam and self.device.type == "cuda")
+        # 图执行需要 CUDA 和 fused Adam；不满足条件时提前报错，默认仍走普通更新。
         if cuda_graph and (not self.fused_adam or not torch.cuda.is_available()):
             raise ValueError("cuda_graph requires CUDA and fused_adam")
         self.cuda_graph = bool(cuda_graph)
@@ -104,14 +105,15 @@ class DDPGAgent:
         batch = replay_buffer.sample(batch_size)
         if self.cuda_graph and not self._graph_failed:
             from cuda_graph import CudaGraphPreparationError, CudaGraphUpdate
+            # 捕获图依赖固定输入布局，批次形状或类型改变时必须重新捕获。
             signature = tuple((array.shape, array.dtype.str) for array in batch)
             if self._graph_runner is None or self._graph_runner.signature != signature:
                 self._invalidate_graph()
                 try:
                     runner = CudaGraphUpdate(self, batch, signature)
                 except CudaGraphPreparationError as error:
-                    # Only a successful rollback is safe to retry with eager execution.
-                    # Rollback failures and replay errors deliberately propagate.
+                    # 只有成功回滚的准备失败才能回退到普通更新。
+                    # 回滚失败或回放失败必须向外抛出，避免重复更新参数。
                     self._graph_failed = True
                     for optimizer in (self.actor_opt, self.critic_opt):
                         for group in optimizer.param_groups:
@@ -133,6 +135,7 @@ class DDPGAgent:
             return tuple(loss.item() for loss in losses)
 
     def _invalidate_graph(self):
+        """等待已有回放完成后丢弃图；加载权重或训练状态后应重新捕获。"""
         if self._graph_runner is not None:
             torch.cuda.synchronize(self.device)
         self._graph_runner = None
@@ -140,6 +143,7 @@ class DDPGAgent:
 
     @property
     def cuda_graph_status(self):
+        """区分关闭、待捕获、运行和回退状态，供日志及检查点元数据使用。"""
         if not self.cuda_graph:
             return 'disabled'
         if self._graph_failed:
@@ -147,6 +151,7 @@ class DDPGAgent:
         return 'active' if self._graph_runner is not None else 'pending'
 
     def _update_tensors(self, batch):
+        """共用同一套更新算式，供普通执行和 CUDA Graph 捕获调用。"""
         obs, action, reward, next_obs, done = batch
 
         with torch.no_grad():
@@ -159,7 +164,8 @@ class DDPGAgent:
         critic_loss.backward()
         self.critic_opt.step()
 
-        # Keep gradients through the action input; only Critic parameter gradients are unused.
+        # Actor 更新仍需经过 Critic 对动作求导，只跳过不使用的 Critic 参数梯度。
+        # 临时冻结的标志在异常路径上也必须恢复，保证后续 Critic 仍可训练。
         critic_parameters = tuple(self.critic.parameters())
         requires_grad = tuple(parameter.requires_grad for parameter in critic_parameters)
         try:
@@ -179,7 +185,7 @@ class DDPGAgent:
 
     def _soft_update(self, target, source):
         if self.device.type == 'cuda':
-            # Keep the original three arithmetic operations, including rounding.
+            # 批量执行原有的乘、乘、加三步，保留运算顺序和逐步舍入结果。
             targets = [parameter.data for parameter in target.parameters()]
             sources = [parameter.data for parameter in source.parameters()]
             torch._foreach_mul_(targets, 1.0 - self.tau)

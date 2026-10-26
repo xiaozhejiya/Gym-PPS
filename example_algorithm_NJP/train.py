@@ -27,6 +27,7 @@ def make_env():
 
 
 def train(args):
+    # 在创建环境前校验图执行依赖，避免错误配置启动训练后才失败。
     if args.cuda_graph and (not args.fused_adam or not torch.cuda.is_available()):
         raise ValueError("cuda_graph requires CUDA and --fused_adam")
     if args.episodes <= 0 or args.episode_length <= 0:
@@ -170,6 +171,7 @@ def train(args):
                 "restored_training_state": restored_training_state,
                 "init_model": init_model,
                 "arguments": vars(args),
+                # 记录实际执行状态；图和固定输入缓冲不参与检查点序列化。
                 "cuda_graph_status": {"predator": predator_agent.cuda_graph_status,
                                       "prey": prey_agent.cuda_graph_status},
                 "environment": {

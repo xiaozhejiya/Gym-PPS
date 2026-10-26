@@ -15,6 +15,7 @@ def get_args():
     parser.add_argument("--fused_adam", action="store_true", help="Use fused Adam on CUDA; CPU keeps the default backend.")
     parser.add_argument("--no_fused_adam", dest="fused_adam", action="store_false", help="Use the default Adam backend, overriding --fused_adam.")
     parser.set_defaults(fused_adam=False)
+    # 图执行必须显式开启；两个开关按出现顺序覆盖，默认仍使用普通更新。
     parser.add_argument("--cuda_graph", action="store_true",
                         help="Capture DDPG updates; requires CUDA and --fused_adam.")
     parser.add_argument("--no_cuda_graph", dest="cuda_graph", action="store_false")

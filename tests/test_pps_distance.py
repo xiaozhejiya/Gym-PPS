@@ -11,8 +11,7 @@ import pytest
 @pytest.mark.parametrize('half_width', [1, 2, 4])
 @pytest.mark.parametrize('periodic', [False, True])
 def test_exact_contact_and_adjacent_floats(half_width, periodic):
-    # Origin-relative coordinates avoid rounding away the nextafter perturbation
-    # when adding a small gap to a much larger boundary coordinate.
+    # 使用相对原点的坐标，避免微小间隔加到大坐标后被舍入，丢失相邻浮点数差异。
     contact = np.float64(.125)
     sizes = np.array([[0., contact], [contact, 0.]])
     for gap, collision in ((np.nextafter(contact, 0.), True),
@@ -32,6 +31,7 @@ def test_exact_contact_and_adjacent_floats(half_width, periodic):
 @pytest.mark.parametrize('periodic', [False, True])
 @pytest.mark.parametrize('count', [1, 2, 13, 52, 54])
 def test_distances_match_native_exactly(half_width, periodic, count):
+    """覆盖不同地图、周期条件和粒子数量，逐项精确比较原生距离结果。"""
     for seed in range(10):
         rng = np.random.RandomState(seed)
         p = rng.uniform(-half_width, half_width, (2, count))
@@ -39,7 +39,7 @@ def test_distances_match_native_exactly(half_width, periodic, count):
         sizes = radii[:, None] + radii[None, :]
         np.fill_diagonal(sizes, 0)
         if count > 1:
-            # Coincident centers, exact contact, adjacent floats, and periodic seams.
+            # 覆盖中心重合、恰好接触、相邻浮点间隔和周期地图接缝。
             gap = [0., sizes[0, 1], np.nextafter(sizes[0, 1], 0),
                    np.nextafter(sizes[0, 1], np.inf), 2 * half_width][seed % 5]
             p[:, 0] = [-half_width, 0]
@@ -55,6 +55,7 @@ def test_distances_match_native_exactly(half_width, periodic, count):
 @pytest.mark.parametrize('dynamics', ['Polar', 'Cartesian'])
 @pytest.mark.parametrize('obstacles', [0, 2])
 def test_distance_trajectory_exact(half_width, periodic, dynamics, obstacles, monkeypatch):
+    """比较重置和完整轨迹，确保距离优化不改变物理状态、观测或奖励。"""
     import gym.envs.pps.pps as pps
     np.random.seed(9)
     env = PredatorPreySwarmCustomizer(gym.make('PredatorPreySwarm-v0'), {
@@ -65,7 +66,7 @@ def test_distance_trajectory_exact(half_width, periodic, dynamics, obstacles, mo
         env.__reinit__()
         env.reset()
         old = deepcopy(env.unwrapped)
-        # Repeat reset with the same RNG, as rejection sampling also depends on distances.
+        # 重置的拒绝采样也依赖距离，两套环境必须从同一随机状态重新生成出生点。
         random_state = np.random.get_state()
         actual = env.reset()
         np.random.set_state(random_state)
