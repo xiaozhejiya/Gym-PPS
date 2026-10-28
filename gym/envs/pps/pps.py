@@ -77,6 +77,8 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
     def __reinit__(self):
         self._n_pe = self._n_p + self._n_e
         self._n_peo = self._n_p + self._n_e + self._n_o
+        self._collision_pair_indices = None
+        self._observation_workspace = None
         self.observation_space = self._get_observation_space()  
         self.action_space = self._get_action_space()   
         self._m = get_mass(self._m_p, self._m_e, self._m_o, self._n_p, self._n_e, self._n_o)  
@@ -150,10 +152,19 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         # 自身特征始终使用真实速度；邻居相对量在 Polar 模式下改用朝向差。
         headings = velocities if self._dynamics_mode == 'Cartesian' else self._heading[:, :self._n_pe].T
         # 相对量的轴顺序为 (观察者, 候选邻居, xy)，方向为“邻居减自身”。
-        relative_positions = positions[None, :, :] - positions[:, None, :]
+        # 复用环境私有的相对状态数组；返回的观测仍单独分配，避免覆盖经验池中的旧观测。
+        key = (self._n_pe, positions.dtype.str, headings.dtype.str)
+        workspace = getattr(self, '_observation_workspace', None)
+        if workspace is None or workspace[0] != key:
+            shape = (self._n_pe, self._n_pe, 2)
+            workspace = (key, np.empty(shape, dtype=positions.dtype),
+                         np.empty(shape, dtype=headings.dtype))
+            self._observation_workspace = workspace
+        relative_positions, relative_velocities = workspace[1:]
+        np.subtract(positions[None, :, :], positions[:, None, :], out=relative_positions)
         if self._is_periodic:
             relative_positions = make_periodic(relative_positions, self._L)
-        relative_velocities = headings[None, :, :] - headings[:, None, :]
+        np.subtract(headings[None, :, :], headings[:, None, :], out=relative_velocities)
         own_state = np.concatenate((positions, velocities), axis=1)
         populations = (slice(0, self._n_p), slice(self._n_p, self._n_pe))
         groups = (
@@ -261,7 +272,14 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
 
     def _get_ball_collision_force(self):
         # 只计算严格下三角中的粒子对，排除自身；反向力由作用力与反作用力关系填充。
-        rows, columns = np.tril_indices(self._n_peo, k=-1)
+        # 粒子数不变时复用配对索引，仅对已判定接触的粒子计算力。
+        cached = getattr(self, '_collision_pair_indices', None)
+        if cached is None or cached[0] != self._n_peo:
+            cached = (self._n_peo, *np.tril_indices(self._n_peo, k=-1))
+            self._collision_pair_indices = cached
+        rows, columns = cached[1:]
+        contact = self._is_collide_b2b[rows, columns]
+        rows, columns = rows[contact], columns[contact]
         delta = self._p[:, columns] - self._p[:, rows]
         if self._is_periodic:
             delta = make_periodic(delta, self._L)

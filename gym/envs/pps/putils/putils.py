@@ -16,8 +16,9 @@ def get_dist_b2b_batch(positions, half_width, periodic, pair_sizes):
 
 
 def make_periodic(x:np.array, L:float) -> np.array:
-    x[x > L] -= 2 * L 
-    x[x < -L] += 2 * L
+    # 保留先减后加的单次周期修正，原地计算以减少布尔索引产生的临时副本。
+    np.subtract(x, 2 * L, out=x, where=x > L)
+    np.add(x, 2 * L, out=x, where=x < -L)
     return x
 
 
@@ -72,10 +73,24 @@ def get_focused_batch(positions, velocities, norm_threshold, width, remove_self)
     target_positions = np.zeros(shape)
     target_velocities = np.zeros(shape)
     norms = np.sqrt(positions[:, :, 0] ** 2 + positions[:, :, 1] ** 2)
-    order = np.argsort(norms, axis=1)
     # 同种邻居沿用 get_focused 的规则：排序后丢弃第一项，而非按个体编号排除。
     # 即使多个距离并列为零，也必须保留这一规则，才能兼容原观测结果。
     offset = int(remove_self)
+    needed = min(norms.shape[1], width + offset)
+    if norms.shape[1] >= 64 and 0 < needed < norms.shape[1]:
+        # 多取一个候选，检查最近邻截断处是否存在等距项。
+        pool = np.argpartition(norms, needed, axis=1)[:, :needed + 1]
+        distances = np.take_along_axis(norms, pool, axis=1)
+        local_order = np.argsort(distances, axis=1)
+        ranked = np.take_along_axis(distances, local_order, axis=1)
+        order = np.take_along_axis(pool, local_order, axis=1)[:, :needed].copy()
+        ambiguous = (np.any(~np.isfinite(norms), axis=1)
+                     | np.any(ranked[:, 1:] == ranked[:, :-1], axis=1))
+        if np.any(ambiguous):
+            # 等距项的原排序取决于完整输入；含等距或非有限距离的行沿用完整排序。
+            order[ambiguous] = np.argsort(norms[ambiguous], axis=1)[:, :needed]
+    else:
+        order = np.argsort(norms, axis=1)
     selected = order[:, offset:offset + width]
     count = selected.shape[1]
     if count:
