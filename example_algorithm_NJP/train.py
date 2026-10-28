@@ -243,22 +243,11 @@ def train(args):
             next_predator_states = next_obs["predator"]
             next_prey_states = next_obs["prey"]
             caught_once = caught_once or caught
-            for pred_i in range(env.n_p):
-                predator_replay.push(
-                    predator_states[pred_i],
-                    predator_actions[:, pred_i],
-                    pred_rewards[pred_i],
-                    next_predator_states[pred_i],
-                    False,
-                )
-            for prey_i in range(env.n_e):
-                prey_replay.push(
-                    prey_states[prey_i],
-                    prey_actions[:, prey_i],
-                    prey_rewards[prey_i],
-                    next_prey_states[prey_i],
-                    False,
-                )
+            # 按原个体顺序整批写入，减少逐个体调用，抽样和终止标记保持原样。
+            predator_replay.push_batch(predator_states, predator_actions.T,
+                                       pred_rewards, next_predator_states)
+            prey_replay.push_batch(prey_states, prey_actions.T,
+                                  prey_rewards, next_prey_states)
 
             predator_states = next_predator_states
             prey_states = next_prey_states
