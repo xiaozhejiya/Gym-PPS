@@ -77,14 +77,14 @@
     "episode_length": 1000
   },
   "implementation_notes": [
-    "Paper specifies angular velocity 0.5 rad/s; this engine takes per-step heading increments, hence 0.05 rad at dt=0.1.",
-    "Energy is excluded from policy observations; 54 features contain own position/velocity/heading and 6 neighbors of each species.",
-    "Fixed predators use the exact wrapped bearing error with the angular limit, and maximum forward propulsion; only prey learn.",
-    "Speed is capped by vector norm in this experiment; wall damping is disabled because the paper includes elastic contact and aerodynamic drag.",
-    "Body radii are not specified in the paper tables; repository defaults are retained.",
-    "Random-action distribution is unspecified; retain the existing per-agent uniform replacement interpretation of epsilon exploration.",
-    "No separate random warmup is specified; start learning when the prey replay has a full minibatch.",
-    "Use the existing simulator integration/contact timing; this is parameter-aligned experimentation, not a claim of bit-exact reproduction of the authors' run.",
-    "Evaluation length, seed, checkpoint frequency and fused Adam/CUDA Graph are implementation choices, not paper hyperparameters."
+    "论文给出的角速度为 0.5 rad/s；引擎使用每步朝向增量，因此 dt=0.1 时对应 0.05 rad。",
+    "策略观测不包含能量；54 维特征包含自身位置、速度、朝向，以及每个物种各 6 个邻居。",
+    "固定捕食者使用受转角上限约束的周期方位角误差和最大前向推力；仅猎物参与学习。",
+    "本实验按向量范数限制速度；论文仅包含弹性接触和空气阻力，因此关闭墙面阻尼。",
+    "论文参数表未指定个体半径，保留仓库默认值。",
+    "论文未指定随机动作分布，沿用现有 epsilon 探索中按个体进行均匀随机替换的解释。",
+    "论文未指定单独的随机预热；猎物经验池积累完整小批次后开始学习。",
+    "沿用现有仿真器的积分和接触采样时刻；这是参数对齐实验，不声称逐位复现作者运行结果。",
+    "评估长度、随机种子、检查点保存频率，以及融合 Adam 和 CUDA Graph 均为实现选择，不属于论文超参数。"
   ]
 }

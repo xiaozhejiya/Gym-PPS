@@ -1,4 +1,4 @@
-"""Independent XYZ predator/prey dynamics with rotation-vector control."""
+"""独立的三维捕食者与猎物动力学，使用旋转向量控制。"""
 
 import numpy as np
 from gym import spaces
@@ -42,7 +42,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         self.seed()
         for name, value in parameters.items():
             if name not in self.param_list:
-                raise TypeError("Unknown 3D environment parameter: " + name)
+                raise TypeError("未知的三维环境参数：" + name)
             setattr(self, name, value)
         self.__reinit__()
 
@@ -50,28 +50,28 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         for name in ("n_p", "n_e", "n_o"):
             value = getattr(self, "_" + name)
             if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
-                raise ValueError(name + " must be a nonnegative integer")
+                raise ValueError(name + " 必须为非负整数")
         if self._n_p + self._n_e == 0:
-            raise ValueError("At least one agent is required")
+            raise ValueError("至少需要一个智能体")
         if self._dynamics_mode != "Polar" or self._billiards_mode:
-            raise ValueError("3D supports Polar rotation-vector dynamics only")
+            raise ValueError("三维环境仅支持 Polar 旋转向量动力学")
         if not self._obstacles_cannot_move:
-            raise ValueError("3D supports static spherical obstacles only")
+            raise ValueError("三维环境仅支持静态球形障碍物")
         if self._capture_cooldown_steps and not self._prey_death_enabled:
-            raise ValueError("capture_cooldown_steps requires prey_death_enabled")
+            raise ValueError("capture_cooldown_steps 需要启用 prey_death_enabled")
         if not np.isfinite(self._L) or self._L <= 0:
-            raise ValueError("L must be finite and positive")
+            raise ValueError("L 必须是有限的正数")
         for name in ("m_p", "m_e", "m_o", "size_p", "size_e", "size_o", "dt"):
             value = getattr(self, "_" + name)
             if not np.isfinite(value) or value <= 0:
-                raise ValueError(name + " must be finite and positive")
+                raise ValueError(name + " 必须是有限的正数")
         for name in ("linVel_p_max", "linVel_e_max", "linAcc_p_max", "linAcc_e_max",
                      "angle_p_max", "angle_e_max", "FoV_p", "FoV_e"):
             value = getattr(self, "_" + name)
             if not np.isfinite(value) or value < 0:
-                raise ValueError(name + " must be finite and nonnegative")
+                raise ValueError(name + " 必须是有限的非负数")
         if self._traj_len < 1:
-            raise ValueError("traj_len must be positive")
+            raise ValueError("traj_len 必须为正数")
         self._validate_spawn()
         self._n_pe = self._n_p + self._n_e
         self._n_peo = self._n_pe + self._n_o
@@ -93,7 +93,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         self.action_space = self._get_action_space()
 
     def set_reference_mode(self, enabled=True):
-        """Toggle vectorized full-pair/full-sort reference paths for validation."""
+        """切换向量化的全配对、全排序参考路径，用于验证。"""
         for key in self.optimization_flags:
             self.optimization_flags[key] = not enabled
 
@@ -114,13 +114,13 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
             self._d_b2b_center, self.d_b2b_edge, self._is_collide_b2b = get_dist_b2b_batch(
                 self._p, self._L, self._is_periodic, self._sizes)
         else:
-            # Keep legacy draws and rejection order unchanged for existing runs.
+            # 保留现有实验的随机抽样与拒绝采样顺序。
             for attempt in range(100):
                 self._p = np.random.uniform(-self._L + max_size, self._L - max_size,
                                              (3, self._n_peo))
                 if self._obstacles_is_constant:
                     if not hasattr(self, "_p_o"):
-                        raise ValueError("Constant obstacles require p_o with shape (3, n_o)")
+                        raise ValueError("固定障碍物需要形状为 (3, n_o) 的 p_o")
                     self._p[:, self._n_pe:] = self._p_o
                 self._d_b2b_center, self.d_b2b_edge, self._is_collide_b2b = get_dist_b2b_batch(
                     self._p, self._L, self._is_periodic, self._sizes)
@@ -130,7 +130,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         self._ddp = np.zeros((3, self._n_peo))
         self._energy = np.concatenate((np.full(self._n_p, self.max_energy_p),
                                         np.full(self._n_e, self.max_energy_e)))[None, :]
-        # Uniform azimuth and uniform Z give a uniform sphere, without rejection draws.
+        # 均匀方位角和均匀 Z 坐标构成球面均匀分布，无需拒绝采样。
         azimuth = np.random.uniform(-np.pi, np.pi, self._n_peo)
         z = np.random.uniform(-1., 1., self._n_peo)
         radial = np.sqrt(1 - z ** 2)
@@ -140,8 +140,8 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         self._trajectory_cursor = 0
         self._trajectory_mode = bool(self.optimization_flags["trajectory"])
         if self._render_traj:
-            # Repeated initial positions draw zero-length segments until enough
-            # history exists, avoiding artificial trails to the world origin.
+            # 初始位置重复填充时只产生零长度线段，
+            # 避免在历史不足时生成连接世界原点的虚假轨迹。
             self._trajectory_buffer = np.repeat(self._p[None, :, :], self._traj_len, axis=0)
         if not self._is_periodic:
             self.d_b2w, self.is_collide_b2w = get_dist_b2w(self._p, self._size, self._L)
@@ -149,30 +149,30 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
 
     def _validate_spawn(self):
         if self._spawn_mode not in ("uniform", "cluster_shell"):
-            raise ValueError("spawn_mode must be uniform or cluster_shell")
+            raise ValueError("spawn_mode 必须为 uniform 或 cluster_shell")
         if self._spawn_mode == "uniform":
             return
         values = (self._prey_spawn_radius, self._predator_spawn_inner,
                   self._predator_spawn_outer)
         if not all(np.isfinite(value) for value in values):
-            raise ValueError("Spawn radii must be finite")
+            raise ValueError("出生区域半径必须有限")
         if not (0 < values[0] < values[1] < values[2]):
-            raise ValueError("Require 0 < prey_spawn_radius < predator_spawn_inner < predator_spawn_outer")
+            raise ValueError("必须满足 0 < prey_spawn_radius < predator_spawn_inner < predator_spawn_outer")
         if (values[0] + self._size_e > self._L
                 or values[2] + self._size_p > self._L):
-            raise ValueError("Spawn regions including body radii must fit inside the arena")
+            raise ValueError("出生区域加上个体半径后必须完全位于场地内")
 
     def _reset_cluster_positions(self):
-        """Uniform-volume ball/shell proposals, rejecting initial body overlaps."""
+        """按球体或球壳体积均匀提出出生位置，并拒绝初始重叠。"""
         self._validate_spawn()
         self._p = np.empty((3, self._n_peo), dtype=np.float64)
         placed = []
-        # Place static obstacles first, so all agents avoid them at birth.
+        # 先放置静态障碍物，确保全部智能体出生时避开障碍物。
         for index in range(self._n_pe, self._n_peo):
             for attempt in range(10000):
                 if self._obstacles_is_constant:
                     if not hasattr(self, "_p_o"):
-                        raise ValueError("Constant obstacles require p_o with shape (3, n_o)")
+                        raise ValueError("固定障碍物需要形状为 (3, n_o) 的 p_o")
                     candidate = self._p_o[:, index - self._n_pe]
                 else:
                     candidate = np.random.uniform(-self._L + self._size_o,
@@ -180,9 +180,9 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
                 if self._spawn_is_clear(candidate, index, placed):
                     break
                 if self._obstacles_is_constant:
-                    raise ValueError("Constant obstacles overlap in cluster_shell spawn")
+                    raise ValueError("cluster_shell 出生模式中的固定障碍物存在重叠")
             else:
-                raise ValueError("Cannot place nonoverlapping obstacles")
+                raise ValueError("无法放置互不重叠的障碍物")
             self._p[:, index] = candidate
             placed.append(index)
         for index in range(self._n_pe):
@@ -200,7 +200,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
                     placed.append(index)
                     break
             else:
-                raise ValueError("Cannot place nonoverlapping agents in spawn regions")
+                raise ValueError("无法在出生区域内放置互不重叠的智能体")
 
     def _spawn_is_clear(self, candidate, index, placed):
         if not placed:
@@ -232,7 +232,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @capture_cooldown_steps.setter
     def capture_cooldown_steps(self, value):
         if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
-            raise ValueError("capture_cooldown_steps must be a nonnegative integer")
+            raise ValueError("capture_cooldown_steps 必须为非负整数")
         self._capture_cooldown_steps = int(value)
 
     @property
@@ -246,27 +246,27 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @prey_death_enabled.setter
     def prey_death_enabled(self, enabled):
         if not isinstance(enabled, (bool, np.bool_)):
-            raise ValueError("prey_death_enabled must be boolean")
+            raise ValueError("prey_death_enabled 必须为布尔值")
         self._prey_death_enabled = bool(enabled)
 
     @property
     def alive_mask(self):
-        """Agent slots remain fixed; callers receive an independent mask."""
+        """智能体槽位保持固定，调用方获得独立的存活掩码。"""
         return self._alive.copy()
 
     @property
     def capture_contacts(self):
-        """One credited predator per newly captured prey in the last step."""
+        """记录上一步中新捕获的猎物，每只猎物仅归功于一个捕食者。"""
         return self._capture_contacts.copy()
 
     def _capture_prey(self):
-        """Resolve contact at the legacy pre-integration reward sampling instant."""
+        """在原有的积分前奖励采样时刻判定接触。"""
         active = np.ones(self._n_peo, dtype=bool)
         active[:self._n_pe] = self._alive
         self._is_collide_b2b &= active[:, None] & active[None, :]
         contact = self._is_collide_b2b[self._n_p:self._n_pe, :self._n_p]
         if self._capture_cooldown_steps:
-            # Shortest available contact wins; at most one prey per ready predator.
+            # 优先处理距离最短的可用接触；每个已冷却捕食者最多捕获一只猎物。
             prey, predators = np.nonzero(contact & (self._capture_remaining == 0)[None, :])
             distances = self._d_b2b_center[self._n_p + prey, predators]
             order = np.lexsort((predators, prey, distances))
@@ -290,7 +290,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         caught = np.flatnonzero(contact.any(axis=1))
         if len(caught):
             distances = self._d_b2b_center[self._n_p + caught, :self._n_p]
-            # argmin deterministically chooses the lowest ID on exact ties.
+            # 距离完全相同时，argmin 确定性地选择最小编号。
             owners = np.argmin(np.where(contact[caught], distances, np.inf), axis=1)
             self._capture_contacts[caught, owners] = True
             dead = self._n_p + caught
@@ -301,7 +301,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
             self._is_collide_b2b[:, dead] = False
 
     def _get_obs(self):
-        # Returned observations always own their storage; private workspaces may be reused.
+        # 返回的观测独立拥有存储空间，内部工作区可以复用。
         self.obs = np.zeros(self.observation_space.shape)
         positions, velocities = self._p[:, :self._n_pe].T, self._dp[:, :self._n_pe].T
         headings = self._heading[:, :self._n_pe].T
@@ -318,8 +318,8 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
             make_periodic(relative_positions, self._L, optimized)
         np.subtract(headings[None, :, :], headings[:, None, :], out=relative_headings)
         if self._prey_death_enabled:
-            # Infinite candidate distance excludes a dead slot before selection,
-            # so it cannot displace a farther living neighbor. Outputs stay finite.
+            # 将死亡槽位的候选距离设为无穷，在选择邻居前排除它们，
+            # 避免占用较远存活邻居的位置，同时保证输出有限。
             relative_positions[:, ~self._alive, :] = np.inf
         own_state = np.concatenate((positions, velocities), axis=1)
         populations = (slice(0, self._n_p), slice(self._n_p, self._n_pe))
@@ -412,9 +412,9 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     def _physical_action(self, action):
         action = np.asarray(action, dtype=np.float64)
         if action.shape not in ((4, self._n_pe), (4, self._n_peo)):
-            raise ValueError("3D action must have shape (4, n_agents) or (4, n_agents_and_obstacles)")
+            raise ValueError("三维动作形状必须为 (4, n_agents) 或 (4, n_agents_and_obstacles)")
         if not np.isfinite(action).all():
-            raise ValueError("3D actions must be finite")
+            raise ValueError("三维动作必须有限")
         rotation, thrust = np.zeros((3, self._n_pe)), np.zeros((1, self._n_pe))
         populations = (slice(0, self._n_p), slice(self._n_p, self._n_pe))
         for species, (observers, strategy, angle_max, force_max) in enumerate(zip(
@@ -502,8 +502,8 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         return self._get_obs(), self._get_reward(self._last_action), self._get_done(), self._get_info()
 
     def _get_reward(self, action):
-        # Contact and auxiliary penalties are dimension independent. Apply sharing
-        # after the XYZ effort term, instead of using the parent's XY effort branch.
+        # 接触及辅助惩罚与维度无关；在加入三维控制代价后
+        # 再应用奖励共享，避免使用父类的二维控制代价分支。
         penalize = self._penalize_control_effort
         mode = self._reward_sharing_mode
         self._penalize_control_effort = False
@@ -511,7 +511,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         distances = self._d_b2b_center
         contacts = self._is_collide_b2b
         if self._prey_death_enabled and self._capture_cooldown_steps:
-            # Physical contacts during cooldown do not constitute another capture.
+            # 冷却期间的物理接触不产生新的捕获。
             self._is_collide_b2b = contacts.copy()
             self._is_collide_b2b[:self._n_p, self._n_p:self._n_pe] = False
             self._is_collide_b2b[self._n_p:self._n_pe, :self._n_p] = False
@@ -561,7 +561,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
             return {"captured_prey": prey.tolist(), "capture_owners": owners.tolist(),
                     "alive_prey_count": int(self._alive[self._n_p:].sum()),
                     "all_prey_caught": not self._alive[self._n_p:].any()}
-        # Preserve the public legacy info shape without mutating the distance matrix.
+        # 保留旧版公开 info 的形状，不修改距离矩阵。
         return np.array([None, None, None]).reshape(3, 1)
 
     @property
@@ -589,7 +589,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
 
     def render(self, mode="human"):
         if mode not in ("human", "rgb_array"):
-            raise ValueError("Unsupported rendering mode: " + str(mode))
+            raise ValueError("不支持的渲染模式：" + str(mode))
         if self.viewer is None:
             from .rendering3d import Viewer3D
             self.viewer = Viewer3D(640, 640)
@@ -600,9 +600,9 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @staticmethod
     def _validate_xyz(name, value, count):
         if not isinstance(value, np.ndarray) or value.ndim != 2 or value.shape != (3, count):
-            raise TypeError("%s must be an ndarray with shape (3, %d)" % (name, count))
+            raise TypeError("%s 必须是形状为 (3, %d) 的 ndarray" % (name, count))
         if not np.isfinite(value).all():
-            raise ValueError(name + " must be finite")
+            raise ValueError(name + " 必须有限")
 
     def _set_xyz(self, name, value):
         self._validate_xyz(name, value, self._n_p + self._n_e + self._n_o)
@@ -621,16 +621,16 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
         self._validate_xyz("heading", value, self._n_p + self._n_e + self._n_o)
         lengths = vector_norm(value)
         if np.any(lengths == 0):
-            raise ValueError("Heading vectors must be nonzero")
+            raise ValueError("朝向向量必须非零")
         self._heading = value.astype(np.float64) / lengths[None, :]
 
     @property
     def theta(self):
-        raise AttributeError("3D orientation uses unit heading vectors, not theta")
+        raise AttributeError("三维姿态使用单位朝向向量，不使用 theta")
 
     @theta.setter
     def theta(self, value):
-        raise AttributeError("3D orientation uses unit heading vectors, not theta")
+        raise AttributeError("三维姿态使用单位朝向向量，不使用 theta")
 
     @property
     def dynamics_mode(self):
@@ -639,7 +639,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @dynamics_mode.setter
     def dynamics_mode(self, value):
         if value != "Polar":
-            raise ValueError("3D supports Polar rotation-vector dynamics only")
+            raise ValueError("三维环境仅支持 Polar 旋转向量动力学")
         self._dynamics_mode = value
 
     @property
@@ -649,7 +649,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @billiards_mode.setter
     def billiards_mode(self, value):
         if value:
-            raise ValueError("3D billiards dynamics are not supported")
+            raise ValueError("三维环境不支持台球动力学")
         self._billiards_mode = False
 
     @property
@@ -676,7 +676,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @energy_enabled.setter
     def energy_enabled(self, value):
         if not isinstance(value, (bool, np.bool_)):
-            raise TypeError("energy_enabled must be boolean")
+            raise TypeError("energy_enabled 必须为布尔值")
         self._energy_enabled = bool(value)
 
     @property
@@ -686,9 +686,9 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @energy.setter
     def energy(self, value):
         if not isinstance(value, np.ndarray) or value.shape != (1, self._n_p + self._n_e):
-            raise TypeError("energy must be an ndarray with shape (1, n_agents)")
+            raise TypeError("energy 必须是形状为 (1, n_agents) 的 ndarray")
         if not np.isfinite(value).all():
-            raise ValueError("energy must be finite")
+            raise ValueError("energy 必须有限")
         self._energy = np.array(value, dtype=np.float64, copy=True)
 
     @property
@@ -706,7 +706,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @sensitivity.setter
     def sensitivity(self, value):
         if not np.isfinite(value) or value < 0:
-            raise ValueError("sensitivity must be finite and nonnegative")
+            raise ValueError("sensitivity 必须是有限的非负数")
         self._sensitivity = value
 
     @property
@@ -716,7 +716,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @act_dim_pursuer.setter
     def act_dim_pursuer(self, value):
         if value != 4:
-            raise ValueError("3D rotation-vector/thrust actions have four components")
+            raise ValueError("三维旋转向量与推力动作必须包含四个分量")
 
     @property
     def act_dim_escaper(self):
@@ -725,7 +725,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @act_dim_escaper.setter
     def act_dim_escaper(self, value):
         if value != 4:
-            raise ValueError("3D rotation-vector/thrust actions have four components")
+            raise ValueError("三维旋转向量与推力动作必须包含四个分量")
 
     @property
     def obstacles_cannot_move(self):
@@ -734,7 +734,7 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @obstacles_cannot_move.setter
     def obstacles_cannot_move(self, value):
         if not value:
-            raise ValueError("3D supports static spherical obstacles only")
+            raise ValueError("三维环境仅支持静态球形障碍物")
         self._obstacles_cannot_move = True
 
     @property
@@ -752,5 +752,5 @@ class PredatorPreySwarm3DEnv(PredatorPreySwarmEnv):
     @n_frames.setter
     def n_frames(self, value):
         if not isinstance(value, int) or value < 1:
-            raise ValueError("n_frames must be a positive integer")
+            raise ValueError("n_frames 必须为正整数")
         self._n_frames = value

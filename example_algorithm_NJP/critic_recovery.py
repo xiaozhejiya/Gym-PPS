@@ -1,4 +1,4 @@
-"""Persistent, policy-independent supervision for first-contact terminal values."""
+"""为首次接触终止值提供持久且独立于策略的监督。"""
 import itertools
 import numpy as np
 import torch
@@ -29,19 +29,19 @@ def augment_terminal(observations, rng, arena_L):
 
 
 class TerminalCalibration:
-    """Small frozen terminal set; its -1 labels remain valid as the Actor changes.
+    """固定的小型终止样本集，其 -1 标签在 Actor 改变后仍有效。
 
-    This does not contain Monte Carlo policy returns. Randomness is private and
-    checkpointed; sample() runs outside graph capture, like ordinary replay.
+    数据不包含蒙特卡洛策略回报；独立随机状态随检查点保存。
+    与普通经验回放一样，sample() 在计算图捕获之外执行。
     """
     def __init__(self, observations, arena_L, seed=700001):
         observations = np.asarray(observations, dtype=np.float32)
         if observations.ndim != 2 or observations.shape[1] != 178 or not len(observations):
-            raise ValueError('Terminal calibration requires nonempty 178D prey observations')
+            raise ValueError("终止值校准需要非空的 178 维猎物观测")
         if not np.isfinite(observations).all() or not np.isfinite(arena_L) or arena_L <= 0:
-            raise ValueError('Terminal calibration inputs must be finite with positive arena_L')
+            raise ValueError("终止值校准输入必须有限，且 arena_L 为正数")
         if np.any(np.linalg.norm(observations[:, 6:9], axis=1) >= .095):
-            raise ValueError('Terminal calibration observations must have a contact within 0.095')
+            raise ValueError("终止值校准观测必须包含距离小于 0.095 的接触")
         self.observations = observations.copy()
         self.arena_L = float(arena_L)
         self._rng = np.random.RandomState(seed)
@@ -61,7 +61,7 @@ class TerminalCalibration:
     @classmethod
     def from_state_dict(cls, state):
         if state.get('layout') != 'periodic-178d-first-contact-terminal-v1':
-            raise ValueError('Unknown terminal calibration layout')
+            raise ValueError("未知的终止值校准布局")
         result = cls(state['observations'].cpu().numpy(), state['arena_L'])
         rng = state['rng']
         result._rng.set_state((rng[0], np.asarray(rng[1], np.uint32), *rng[2:]))
@@ -69,11 +69,11 @@ class TerminalCalibration:
 
 
 class NearThreatReplay:
-    """Live one-step transitions near a predator; no frozen policy-return labels."""
+    """捕食者附近的实时单步转移样本，不包含固定策略的回报标签。"""
     def __init__(self, radius=.5, capacity=30000, seed=700003):
         from replay_buffer import ReplayBuffer
         if not np.isfinite(radius) or radius <= .095:
-            raise ValueError('Near-threat radius must exceed the capture radius')
+            raise ValueError("近威胁半径必须大于捕获半径")
         self.radius = float(radius)
         self.buffer = ReplayBuffer(capacity, 178, 4, seed=seed)
 
@@ -89,7 +89,7 @@ class NearThreatReplay:
     @classmethod
     def from_state_dict(cls, state):
         if state.get('layout') != 'near-threat-one-step-v1':
-            raise ValueError('Unknown near-threat replay layout')
+            raise ValueError("未知的近威胁回放布局")
         result = cls(state['radius'], state['replay']['capacity'])
         result.buffer.load_state_dict(state['replay'])
         return result

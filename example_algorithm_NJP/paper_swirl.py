@@ -1,4 +1,4 @@
-"""Isolated configuration for the confined-space experiment in NJP section 4.4."""
+"""NJP 第 4.4 节受限空间实验的独立配置。"""
 import json
 from pathlib import Path
 
@@ -17,7 +17,7 @@ def settings(arena_L=None):
     if arena_L is not None:
         diagonal = float(2 * float(arena_L) * np.sqrt(2))
         if not np.isfinite(diagonal) or diagonal <= 0:
-            raise ValueError("arena_L must be finite and positive")
+            raise ValueError("arena_L 必须是有限的正数")
         config["environment"].update(L=float(arena_L), FoV_p=diagonal, FoV_e=diagonal)
     return config
 
@@ -60,8 +60,8 @@ class PaperSwirlEnv(PredatorPreySwarmEnv):
         reward = np.concatenate((contacts.sum(axis=0), -contacts.sum(axis=1))).astype(float)[None, :]
         reward *= self.paper_rewards["contact"]
         if self._penalize_control_effort:
-            # The engine has already scaled actions into force and radians per
-            # step. The paper's angular effort uses radians per second.
+            # 引擎已将动作缩放为力和每步转角；
+            # 论文中的转向控制代价使用每秒弧度。
             reward -= (self.paper_rewards["forward_effort"] * np.abs(actions[[1], :self._n_pe])
                        + self.paper_rewards["angular_effort"] * np.abs(actions[[0], :self._n_pe] / self._dt))
         if self._penalize_collide_walls and not self._is_periodic:
@@ -79,9 +79,9 @@ class PaperObservation(MyObs):
         })
 
     def observation(self, observation):
-        # Native Polar layout ends in [energy, heading_x, heading_y].
+        # 原始 Polar 布局以 [energy, heading_x, heading_y] 结尾。
         energy = observation.shape[0] - 3
-        # Paper order: own position/velocity/heading, then neighbor features.
+        # 论文顺序：自身位置、速度、朝向，然后是邻居特征。
         return split_obs(np.concatenate((observation[:4], observation[energy + 1:],
                                          observation[4:energy]), axis=0), self.env)
 

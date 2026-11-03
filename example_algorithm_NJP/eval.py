@@ -20,22 +20,22 @@ from checkpoint_compat import structure, validate_checkpoint
 
 
 def get_args():
-    parser = argparse.ArgumentParser("Evaluate two shared DDPG policies for N-vs-N Gym-PPS")
+    parser = argparse.ArgumentParser("评估 Gym-PPS 多对多场景的双方共享 DDPG 策略")
     parser.add_argument("--experiment", choices=("paper_swirl",) + THREE_D_EXPERIMENTS, default=None)
     parser.add_argument("--arena_L", type=float, default=None,
-                        help="Override the selected experiment's arena half-width.")
+                        help="覆盖所选实验的场地半宽。")
     parser.add_argument("--n_p", type=int, default=None)
     parser.add_argument("--n_e", type=int, default=None)
     from njp_3d import add_spawn_arguments
     add_spawn_arguments(parser)
-    parser.add_argument("--headless", action="store_true", help="Create an offscreen OpenGL context for GIF recording.")
+    parser.add_argument("--headless", action="store_true", help="创建离屏 OpenGL 上下文，用于录制 GIF。")
     parser.add_argument("--camera_view", choices=("oblique", "xy", "xz", "yz"), default="oblique")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--predator_controller", choices=("input", "nearest", "static", "random"), default=None)
     parser.add_argument("--prey_controller", choices=("input", "nearest", "static", "random"), default=None)
-    parser.add_argument("--report_path", type=str, default=None, help="Write read-only per-step behavioral diagnostics as JSON.")
+    parser.add_argument("--report_path", type=str, default=None, help="将逐步行为诊断结果写入 JSON，不修改仿真状态。")
     parser.add_argument("--allow_capture_transfer", action="store_true",
-                        help="Explicitly evaluate actors under a changed capture rule; other layout checks remain strict.")
+                        help="显式在变化后的捕获规则下评估 Actor，其他布局检查仍保持严格。")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--episode_length", type=int, default=120)
@@ -45,10 +45,10 @@ def get_args():
     parser.add_argument("--model_path", type=str, default="ddpg_both_NvsN.pt")
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--gif_path", type=str, default=None,
-                        help="Save a GIF here; multiple episodes add _ep001, _ep002, etc.")
-    parser.add_argument("--gif_fps", type=int, default=25, help="GIF playback frames per second (1-100).")
+                        help="GIF 保存路径；多个回合会追加 _ep001、_ep002 等后缀。")
+    parser.add_argument("--gif_fps", type=int, default=25, help="GIF 播放帧率，范围为 1–100。")
     parser.add_argument("--gif_stride", type=int, default=1,
-                        help="Record every N environment steps; larger values reduce GIF size.")
+                        help="每 N 个环境步录制一帧；数值越大，GIF 文件越小。")
     selected, _ = parser.parse_known_args()
     if selected.experiment == "paper_swirl":
         from paper_swirl import defaults
@@ -65,9 +65,9 @@ def get_args():
 
 def evaluate(args):
     if args.episodes <= 0 or args.episode_length <= 0:
-        raise ValueError("episodes and episode_length must be positive")
+        raise ValueError("episodes 和 episode_length 必须为正数")
     if not 1 <= args.gif_fps <= 100 or args.gif_stride <= 0:
-        raise ValueError("gif_fps must be between 1 and 100; gif_stride must be positive")
+        raise ValueError("gif_fps 必须在 1 到 100 之间，gif_stride 必须为正数")
     if getattr(args, "headless", False):
         os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
         import pyglet
@@ -75,7 +75,7 @@ def evaluate(args):
     image_module = None
     if args.gif_path:
         if not args.gif_path.lower().endswith(".gif"):
-            raise ValueError("gif_path must end with .gif")
+            raise ValueError("gif_path 必须以 .gif 结尾")
         from PIL import Image
         image_module = Image
         args.gif_path = os.path.abspath(args.gif_path)
@@ -105,21 +105,21 @@ def evaluate(args):
 
 
 def _save_gif(frames, path, fps, preserve_frame_count=False):
-    # GIF delays are multiples of 10 ms. Alternate rounded delays so rates
-    # such as 30 fps retain their average duration instead of becoming 33 fps.
+    # GIF 帧延时以 10 毫秒为单位；交替使用取整后的延时，
+    # 使 30 fps 等帧率保持正确平均时长，避免变成约 33 fps。
     durations = [(round((i + 1) * 100 / fps) - round(i * 100 / fps)) * 10
                  for i in range(len(frames))]
     if preserve_frame_count:
-        # Pillow's save_all path merges identical consecutive frames even with
-        # optimize=False. Encode each full frame independently for 3D recordings
-        # so stationary scenes retain every sample without changing any pixels.
+        # 即使设置 optimize=False，Pillow 的 save_all 仍会合并连续相同帧。
+        # 三维录制逐帧独立编码完整画面，
+        # 使静止场景保留每次采样，同时保持像素不变。
         from PIL import GifImagePlugin
         header, _ = GifImagePlugin.getheader(frames[0].copy(), info={"loop": 0, "optimize": False})
         with open(path, "wb") as output:
             for block in header:
                 output.write(block)
             for frame, duration in zip(frames, durations):
-                # Each adaptive-palette frame keeps its own color table.
+                # 每个自适应调色板帧保留自己的颜色表。
                 for block in GifImagePlugin.getdata(frame, duration=duration, disposal=2,
                                                     include_color_table=True):
                     output.write(block)
@@ -127,7 +127,7 @@ def _save_gif(frames, path, fps, preserve_frame_count=False):
     else:
         frames[0].save(path, format="GIF", save_all=True, append_images=frames[1:],
                        duration=durations, loop=0, disposal=2, optimize=False)
-    print(f"Saved GIF: {path}; frames={len(frames)}, fps={fps}")
+    print(f"已保存 GIF：{path}；帧数={len(frames)}，帧率={fps}")
 
 
 def _caught_in_step(env, distance, contact_distance):
@@ -139,8 +139,8 @@ def _caught_in_step(env, distance, contact_distance):
 
 
 def _evaluate(args, env, image_module):
-    # Customizer wrappers keep parameter copies. Controller overrides apply to
-    # the simulator, so query it directly rather than a stale wrapper copy.
+    # 定制包装器保留参数副本；控制器覆盖直接作用于仿真器，
+    # 因此应读取仿真器，避免使用包装器中的旧副本。
     physical_env = env.unwrapped
     obs = env.reset()
     obs_dim = env.observation_space.spaces["predator"].shape[1]
@@ -148,7 +148,7 @@ def _evaluate(args, env, image_module):
     requested_device = getattr(args, "device", "auto")
     device = ("cuda" if torch.cuda.is_available() else "cpu") if requested_device == "auto" else requested_device
     if device == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA evaluation requested but CUDA is unavailable")
+        raise ValueError("已请求 CUDA 评估，但当前 CUDA 不可用")
 
     hidden_activation = getattr(args, "hidden_activation", "relu")
     predator_agent = DDPGAgent(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=args.hidden_dim,
@@ -182,9 +182,9 @@ def _evaluate(args, env, image_module):
     diagnostics_enabled = args.experiment in THREE_D_EXPERIMENTS or bool(getattr(args, "report_path", None))
 
     print(
-        f"Evaluating {os.path.basename(model_path)}: "
-        f"n_p={env.n_p}, n_e={env.n_e}, obs_dim={obs_dim}, "
-        f"shared_action_dim={act_dim}, contact_distance={contact_distance:.4f}"
+        f"正在评估 {os.path.basename(model_path)}： "
+        f"捕食者数={env.n_p}，猎物数={env.n_e}，观测维度={obs_dim}， "
+        f"共享动作维度={act_dim}，接触距离={contact_distance:.4f}"
     )
 
     for episode in range(1, args.episodes + 1):
@@ -203,8 +203,8 @@ def _evaluate(args, env, image_module):
         for step in range(1, args.episode_length + 1):
             if args.gif_path and (step - 1) % args.gif_stride == 0:
                 frame = image_module.fromarray(env.render(mode="rgb_array"))
-                # Retain indexed images, rather than RGB arrays, to reduce
-                # memory while recording. No intermediate PNG files needed.
+                # 保存索引色图像以降低录制内存，
+                # 无需保留 RGB 数组或生成中间 PNG 文件。
                 frames.append(frame.convert("P", palette=image_module.Palette.ADAPTIVE))
             elif args.render:
                 env.render(mode="human")
@@ -247,15 +247,15 @@ def _evaluate(args, env, image_module):
         min_distances.append(min_distance)
         catch_steps.append(first_catch_step)
         print(
-            f"episode={episode:03d} caught={caught_once} "
-            f"first_catch_step={first_catch_step:03d} min_dist={min_distance:.4f}"
+            f"回合={episode:03d} 已捕获={caught_once} "
+            f"首次捕获步数={first_catch_step:03d} 最小距离={min_distance:.4f}"
         )
 
     success_rate = successes / args.episodes
     print(
-        f"summary: success_rate={success_rate:.2%}, "
-        f"avg_min_dist={np.mean(min_distances):.4f}, "
-        f"avg_steps={np.mean(catch_steps):.1f}"
+        f"汇总：成功率={success_rate:.2%}， "
+        f"平均最小距离={np.mean(min_distances):.4f}， "
+        f"平均捕获步数={np.mean(catch_steps):.1f}"
     )
     if getattr(args, "report_path", None):
         report = {"model": os.path.abspath(model_path), "seed": args.seed,
@@ -275,7 +275,7 @@ def _evaluate(args, env, image_module):
         os.makedirs(os.path.dirname(os.path.abspath(args.report_path)), exist_ok=True)
         with open(args.report_path, "w") as handle:
             json.dump(report, handle, indent=2, allow_nan=False)
-        print("Saved evaluation diagnostics: " + os.path.abspath(args.report_path))
+        print("已保存评估诊断：" + os.path.abspath(args.report_path))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 {
-  "description": "Fresh seed control: fixed nearest-escape prey, predator-only SiLU DDPG, no energy.",
+  "description": "新随机种子对照：猎物固定使用最近邻逃逸规则，仅训练 SiLU DDPG 捕食者，关闭能量机制。",
   "environment": {
     "dynamics_mode": "Polar",
     "L": 2,

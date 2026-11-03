@@ -1,4 +1,4 @@
-"""Read-only behavioral diagnostics; no random draws or changes to the simulator."""
+"""只读行为诊断，不抽取随机数，也不修改仿真器状态。"""
 import numpy as np
 
 
@@ -37,8 +37,8 @@ class Diagnostics:
                     "moving_fraction": float(np.mean(speeds > .01)) if len(speeds) else 0.,
                     "mean_energy": float(energy.mean()) if len(energy) else 0.,
                     "low_energy_fraction": float(np.mean(energy < .5)) if len(energy) else 0.,
-                    # Rule controllers replace the supplied actions internally;
-                    # their placeholder input has no policy saturation meaning.
+                    # 规则控制器会在内部替换传入动作，
+                    # 因此占位输入不能用于衡量策略动作饱和程度。
                     "action_saturation": (float(np.mean(np.abs(policy_actions) >= .99))
                                           if policy_actions.size else 0.) if strategy == "input" else None}
             if death:

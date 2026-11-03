@@ -114,11 +114,10 @@ class CudaGraphUpdate:
 
 
 class PackedCudaGraphUpdate(CudaGraphUpdate):
-    """Upload one pinned, contiguous batch without changing graph arithmetic.
+    """一次上传固定内存中的连续批次，保持计算图算式不变。
 
-    The host buffer is reused only after its previous DMA has completed. A
-    stream change also orders the new upload after the previous graph replay;
-    ordinary same-stream updates need no full-device synchronization.
+    上一次 DMA 传输完成后才复用主机缓冲。切换流时，新上传必须
+    等待上一次计算图回放完成；同一流上的普通更新无需全设备同步。
     """
 
     def _prepare_inputs(self, agent, batch):

@@ -1,5 +1,5 @@
 {
-  "description": "3D SiLU no-energy control with 8 predator and 20 prey neighbors per observer; predators have 1.5x prey speed, turn and thrust limits. Train fresh with 178-dimensional observations.",
+  "description": "三维 SiLU 无能量对照，每个观察者感知 8 个捕食者和 20 个猎物邻居；捕食者的速度、转向及推力上限为猎物的 1.5 倍，使用 178 维观测从头训练。",
   "environment": {
     "dynamics_mode": "Polar",
     "L": 2,

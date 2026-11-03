@@ -1,8 +1,8 @@
-"""Opt-in TD3 predator, preserving the existing transferable Actor layout.
+"""可选的 TD3 捕食者，保留现有可迁移的 Actor 布局。
 
-Target noise has a private, checkpointed RNG and is supplied as graph input.
-Separate captures implement critic-only, warmup targets, and Actor updates;
-capture warmups never advance the actual update counter or consume target noise.
+目标噪声使用独立且随检查点保存的随机状态，并作为计算图输入。
+分别捕获仅更新 Critic、预热目标网络和更新 Actor 的计算图；
+捕获预热不会推进实际更新计数，也不会消耗目标噪声。
 """
 import math
 import warnings
@@ -21,11 +21,11 @@ class TD3Agent(DDPGAgent):
     def __init__(self, *args, policy_delay=2, target_noise=.2, target_noise_clip=.5,
                  actor_warmup_updates=2000, target_noise_seed=0, **kwargs):
         if not isinstance(policy_delay, int) or policy_delay < 1:
-            raise ValueError("policy_delay must be a positive integer")
+            raise ValueError("policy_delay 必须为正整数")
         if not isinstance(actor_warmup_updates, int) or actor_warmup_updates < 0:
-            raise ValueError("actor_warmup_updates must be a nonnegative integer")
+            raise ValueError("actor_warmup_updates 必须为非负整数")
         if any(not math.isfinite(x) or x < 0 for x in (target_noise, target_noise_clip)):
-            raise ValueError("target noise settings must be finite and nonnegative")
+            raise ValueError("目标噪声设置必须是有限的非负数")
         super().__init__(*args, **kwargs)
         self.policy_delay = policy_delay
         self.target_noise = float(target_noise)
@@ -72,7 +72,7 @@ class TD3Agent(DDPGAgent):
 
     def load_state_dict(self, state):
         if state.get('algorithm') != 'td3' or state.get('algorithm_config') != self.algorithm_config():
-            raise ValueError('TD3 algorithm/settings mismatch; use policy_only for an explicit Actor transfer')
+            raise ValueError("TD3 算法或设置不匹配，请使用 policy_only 显式迁移 Actor")
         super().load_state_dict(state)
         self.critic2.load_state_dict(state['critic2'])
         self.critic2_target.load_state_dict(state['critic2_target'])
@@ -108,7 +108,7 @@ class TD3Agent(DDPGAgent):
                     for optimizer in self._graph_optimizers():
                         for group in optimizer.param_groups:
                             group['capturable'] = False
-                    warnings.warn('TD3 graph preparation failed; restored training state: ' + str(error), RuntimeWarning)
+                    warnings.warn("TD3 计算图准备失败，已恢复训练状态：" + str(error), RuntimeWarning)
                 else:
                     self._graphs[self._mode] = runner
                     self.graph_capture_seconds += runner.capture_seconds

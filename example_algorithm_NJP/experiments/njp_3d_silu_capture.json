@@ -1,5 +1,5 @@
 {
-  "description": "3D 178D SiLU, no energy, 1.5x predator limits; first contact removes prey until reset, with one capture reward per prey.",
+  "description": "三维 178 维 SiLU 无能量场景，捕食者运动上限为猎物的 1.5 倍；首次接触后移除猎物直到重置，每只猎物仅产生一次捕获奖励。",
   "environment": {
     "dynamics_mode": "Polar",
     "L": 2,

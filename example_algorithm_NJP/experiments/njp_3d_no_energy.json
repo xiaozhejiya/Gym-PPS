@@ -1,5 +1,5 @@
 {
-  "description": "3D energy ablation: consumption and low-energy gating disabled; energy observation fixed full.",
+  "description": "三维能量消融：关闭能量消耗和低能量运动限制，能量观测固定为满值。",
   "environment": {
     "dynamics_mode": "Polar",
     "L": 2,

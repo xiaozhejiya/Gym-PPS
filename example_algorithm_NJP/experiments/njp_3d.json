@@ -1,5 +1,5 @@
 {
-  "description": "Independent 3D dual-policy DDPG experiment; not a paper reproduction claim.",
+  "description": "独立的三维双方共享 DDPG 策略实验，不代表已复现论文结果。",
   "environment": {
     "dynamics_mode": "Polar", "L": 2, "n_p": 16, "n_e": 160,
     "pursuer_strategy": "input", "escaper_strategy": "input", "is_periodic": true,

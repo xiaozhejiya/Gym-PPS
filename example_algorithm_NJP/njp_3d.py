@@ -1,4 +1,4 @@
-"""3D preset, deliberately independent of both existing 2D experiments."""
+"""三维预设，独立于现有的两个二维实验。"""
 import json
 import math
 from pathlib import Path
@@ -24,7 +24,7 @@ def add_spawn_arguments(parser):
     parser.add_argument("--predator_spawn_inner", type=float, default=None)
     parser.add_argument("--predator_spawn_outer", type=float, default=None)
     parser.add_argument("--capture_cooldown_steps", type=int, default=None,
-                        help="Capture interval in environment steps; zero preserves immediate multi-capture.")
+                        help="以环境步计的捕获间隔；0 表示保留即时多目标捕获。")
 
 
 def spawn_options(args):
@@ -43,16 +43,16 @@ def settings(arena_L=None, n_p=None, n_e=None, evaluation=False, no_energy=False
     params = config["environment"]
     if arena_L is not None:
         if not math.isfinite(arena_L) or arena_L <= max(params["size_p"], params["size_e"]):
-            raise ValueError("arena_L must be finite and exceed the largest body radius")
+            raise ValueError("arena_L 必须有限且大于最大个体半径")
         params["L"] = float(arena_L)
     for name, value in (("n_p", n_p), ("n_e", n_e)):
         if value is not None:
             if not isinstance(value, int) or value <= 0:
-                raise ValueError(name + " must be a positive integer")
+                raise ValueError(name + " 必须为正整数")
             params[name] = value
     if set(spawn) - set(ENV_ARGUMENTS):
-        raise TypeError("Unknown environment options: " + str(sorted(set(spawn) - set(ENV_ARGUMENTS))))
-    # Set the mode last: wrapper setters validate after each parameter assignment.
+        raise TypeError("未知的环境选项：" + str(sorted(set(spawn) - set(ENV_ARGUMENTS))))
+    # 最后设置出生模式：包装器会在每次赋值后验证参数。
     for name in ENV_ARGUMENTS:
         if spawn.get(name) is not None:
             params[name] = spawn[name]

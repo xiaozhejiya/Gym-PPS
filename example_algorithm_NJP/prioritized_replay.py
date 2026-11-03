@@ -1,4 +1,4 @@
-"""Proportional TD-error replay with uniform mixing and importance correction."""
+"""按 TD 误差比例回放，混合均匀采样并进行重要性修正。"""
 import numpy as np
 import torch
 
@@ -11,12 +11,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, capacity, obs_dim, act_dim, seed=1, alpha=.6, beta=.4,
                  beta_steps=200000, uniform_mix=.1, epsilon=1e-6):
         if int(capacity) <= 0:
-            raise ValueError('Replay capacity must be positive')
+            raise ValueError("经验池容量必须为正数")
         if not (np.isfinite(alpha) and 0 <= alpha <= 1
                 and np.isfinite(beta) and 0 <= beta <= 1
                 and np.isfinite(uniform_mix) and 0 <= uniform_mix <= 1
                 and np.isfinite(epsilon) and epsilon > 0 and beta_steps > 0):
-            raise ValueError('Invalid priority replay parameters')
+            raise ValueError("优先回放参数无效")
         super().__init__(capacity, obs_dim, act_dim, seed=1 if seed is None else seed)
         self.alpha, self.beta_start = float(alpha), float(beta)
         self.beta_steps, self.uniform_mix = int(beta_steps), float(uniform_mix)
@@ -57,7 +57,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def sample_prioritized(self, batch_size):
         if self.size == 0 or batch_size <= 0:
-            raise ValueError('A positive batch size and nonempty replay are required')
+            raise ValueError("批量大小必须为正数，且经验池不能为空")
         total = self._sum[1]
         values = self._rng.uniform(0., total, batch_size)
         nodes = np.ones(batch_size, dtype=np.int64)
@@ -87,7 +87,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         errors = np.asarray(td_errors, dtype=np.float64).reshape(-1)
         if (indices.shape != errors.shape or np.any(indices < 0) or np.any(indices >= self.size)
                 or not np.isfinite(errors).all()):
-            raise ValueError('Priority indices/errors must be valid and finite')
+            raise ValueError("优先级索引和误差必须有效且有限")
         if not len(indices):
             return
         order = np.argsort(indices)
@@ -108,16 +108,16 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def load_state_dict(self, state):
         if 'prioritization' not in state:
-            raise ValueError('Uniform replay cannot restore priority history; use --reset_replay')
+            raise ValueError("均匀经验池无法恢复优先级历史，请使用 --reset_replay")
         meta = state['prioritization']
         for key, value in dict(version=1, alpha=self.alpha, beta=self.beta_start,
                 beta_steps=self.beta_steps, uniform_mix=self.uniform_mix, epsilon=self.epsilon).items():
             if meta[key] != value:
-                raise ValueError('Priority replay configuration mismatch: ' + key)
+                raise ValueError("优先回放配置不匹配：" + key)
         super().load_state_dict(state)
         priorities = meta['priorities'].cpu().numpy()
         if priorities.shape != (self.size,) or not np.isfinite(priorities).all() or np.any(priorities <= 0):
-            raise ValueError('Invalid saved priorities')
+            raise ValueError("已保存的优先级无效")
         self._priorities[:] = 0
         self._priorities[:self.size] = priorities
         self._sum[:] = 0; self._min[:] = np.inf

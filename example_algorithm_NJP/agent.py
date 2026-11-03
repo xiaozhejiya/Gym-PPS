@@ -38,21 +38,21 @@ class DDPGAgent:
         critic_risk_batch_size=256,
     ):
         if not math.isfinite(actor_logit_penalty) or actor_logit_penalty < 0:
-            raise ValueError("actor_logit_penalty must be finite and nonnegative")
+            raise ValueError("actor_logit_penalty 必须是有限的非负数")
         if not math.isfinite(actor_logit_threshold) or actor_logit_threshold <= 0:
-            raise ValueError("actor_logit_threshold must be finite and positive")
+            raise ValueError("actor_logit_threshold 必须是有限的正数")
         if not math.isfinite(critic_grad_clip) or critic_grad_clip < 0:
-            raise ValueError("critic_grad_clip must be finite and nonnegative")
+            raise ValueError("critic_grad_clip 必须是有限的非负数")
         if not math.isfinite(critic_terminal_weight) or critic_terminal_weight < 0:
-            raise ValueError('critic_terminal_weight must be finite and nonnegative')
+            raise ValueError("critic_terminal_weight 必须是有限的非负数")
         if not math.isfinite(critic_risk_weight) or critic_risk_weight < 0:
-            raise ValueError('critic_risk_weight must be finite and nonnegative')
+            raise ValueError("critic_risk_weight 必须是有限的非负数")
         if (not isinstance(critic_risk_batch_size, int) or critic_risk_batch_size < 1
                 or (critic_risk_weight and (obs_dim != 178 or act_dim != 4))):
-            raise ValueError('Near-threat replay requires positive batch size and 178D/4D prey layout')
+            raise ValueError("近威胁回放要求批量大小为正数，且猎物使用 178 维观测和 4 维动作")
         if (not isinstance(critic_terminal_batch_size, int) or critic_terminal_batch_size < 1
                 or (critic_terminal_weight and (obs_dim != 178 or act_dim != 4))):
-            raise ValueError('Terminal calibration requires positive batch size and 178D/4D prey layout')
+            raise ValueError("终止值校准要求批量大小为正数，且猎物使用 178 维观测和 4 维动作")
         self.hidden_activation = hidden_activation
         self.actor_logit_penalty = float(actor_logit_penalty)
         self.actor_logit_threshold = float(actor_logit_threshold)
@@ -73,7 +73,7 @@ class DDPGAgent:
         self.fused_adam = bool(fused_adam and self.device.type == "cuda")
         # 图执行需要 CUDA 和 fused Adam；不满足条件时提前报错，默认仍走普通更新。
         if cuda_graph and (not self.fused_adam or not torch.cuda.is_available()):
-            raise ValueError("cuda_graph requires CUDA and fused_adam")
+            raise ValueError("cuda_graph 需要 CUDA 和 fused_adam")
         self.cuda_graph = bool(cuda_graph)
         self.packed_graph_inputs = bool(packed_graph_inputs)
         self._graph_runner = None
@@ -96,7 +96,7 @@ class DDPGAgent:
         optimizer_kwargs = {}
         if self.fused_adam:
             if "fused" not in inspect.signature(torch.optim.Adam).parameters:
-                raise ValueError("This PyTorch version does not support --fused_adam; use --no_fused_adam.")
+                raise ValueError("当前 PyTorch 版本不支持 --fused_adam，请使用 --no_fused_adam。")
             optimizer_kwargs["fused"] = True
         if self.cuda_graph:
             optimizer_kwargs["capturable"] = True
@@ -110,7 +110,7 @@ class DDPGAgent:
     def act_batch(self, observations, noise_std=0.0, epsilon=0.0):
         """将 (个体数, 观测维度) 批量映射为同顺序的 (个体数, 动作维度)。"""
         if not np.isfinite(epsilon) or not 0.0 <= epsilon <= 1.0:
-            raise ValueError("epsilon must be finite and between 0 and 1")
+            raise ValueError("epsilon 必须是 0 到 1 之间的有限数值")
         obs_t = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
         # 每个物种只做一次前向计算和结果回传，避免逐个体触发 GPU/CPU 同步。
         action = self.actor(obs_t).cpu().numpy()
@@ -118,9 +118,9 @@ class DDPGAgent:
             action += np.random.normal(0.0, noise_std, size=action.shape)
         action = np.clip(action, -1.0, 1.0).astype(np.float32)
         if epsilon > 0:
-            # Choose independently for each individual, replacing both action
-            # components together. This is the random-action interpretation
-            # used in our exploration ablation; the paper omits its distribution.
+            # 为每个个体独立决定是否探索，并同时替换其全部动作分量。
+            # 这里采用探索对照实验中的随机动作定义；
+            # 原论文未明确给出随机动作的分布。
             explore = np.random.uniform(size=action.shape[0]) < epsilon
             random_action = np.random.uniform(-1.0, 1.0, size=action.shape).astype(np.float32)
             action[explore] = random_action[explore]
@@ -144,7 +144,7 @@ class DDPGAgent:
         if self.risk_replay is not None:
             state['risk_replay'] = self.risk_replay.state_dict()
         config = self.network_config()
-        # Preserve the original state dictionary for legacy ReLU experiments.
+        # 旧版 ReLU 实验继续使用原有状态字典格式。
         if config != self.legacy_network_config():
             state["network_config"] = config
         return state
@@ -172,25 +172,25 @@ class DDPGAgent:
         return config
 
     def set_actor_updates(self, enabled):
-        """Change update mode only between updates; recapture the corresponding graph."""
+        """仅在两次更新之间切换更新模式，并重新捕获相应的计算图。"""
         enabled = bool(enabled)
         if enabled != self.actor_updates_enabled:
             self._invalidate_graph()
             self.actor_updates_enabled = enabled
 
     def reset_critic(self, seed, learning_rate=1e-4, layer_norm=True, grad_clip=1.0, geometry=False):
-        """Explicit recovery: preserve both Actors/Actor optimizer and all global RNGs."""
+        """显式恢复 Critic，同时保留双方 Actor、Actor 优化器及所有全局随机状态。"""
         if getattr(self, 'algorithm', 'ddpg') != 'ddpg':
-            raise ValueError('reset_critic currently supports DDPG only')
+            raise ValueError("reset_critic 目前仅支持 DDPG")
         if not math.isfinite(learning_rate) or learning_rate <= 0:
-            raise ValueError('learning_rate must be finite and positive')
+            raise ValueError("learning_rate 必须是有限的正数")
         if not math.isfinite(grad_clip) or grad_clip < 0:
-            raise ValueError('grad_clip must be finite and nonnegative')
+            raise ValueError("grad_clip 必须是有限的非负数")
         from copy import deepcopy
         self._invalidate_graph()
         devices = [self.device.index if self.device.index is not None else torch.cuda.current_device()] if self.device.type == 'cuda' else []
         with torch.random.fork_rng(devices=devices):
-            # Initialization happens on CPU; do not reseed unrelated CUDA devices.
+            # 在 CPU 上初始化，不重设其他 CUDA 设备的随机种子。
             torch.random.default_generator.manual_seed(seed)
             critic = Critic(self.actor.net[0].in_features, self.actor.net[-2].out_features,
                             self.critic.fc1.out_features, 2 + len(self.critic.extra_layers),
@@ -209,7 +209,7 @@ class DDPGAgent:
 
     def install_terminal_calibration(self, observations, arena_L, weight=1., batch_size=32, seed=700001):
         if not math.isfinite(weight) or weight <= 0 or not isinstance(batch_size, int) or batch_size < 1:
-            raise ValueError('Terminal calibration requires positive weight and batch_size')
+            raise ValueError("终止值校准要求权重和 batch_size 为正数")
         from critic_recovery import TerminalCalibration
         calibration = TerminalCalibration(observations, arena_L, seed)
         self._invalidate_graph()
@@ -219,13 +219,13 @@ class DDPGAgent:
 
     def install_risk_replay(self, replay_state, weight=1., batch_size=256, radius=.5):
         if not math.isfinite(weight) or weight <= 0 or not isinstance(batch_size, int) or batch_size < 1:
-            raise ValueError('Near-threat replay requires positive weight and batch_size')
+            raise ValueError("近威胁回放要求权重和 batch_size 为正数")
         from critic_recovery import NearThreatReplay
         replay = NearThreatReplay(radius)
         arrays = replay_state['arrays']; size = replay_state['size']
         replay.push_batch(*(arrays[n][:size].cpu().numpy() for n in
                             ('obs', 'actions', 'rewards', 'next_obs', 'dones')))
-        if not len(replay.buffer): raise ValueError('No near-threat transitions in source replay')
+        if not len(replay.buffer): raise ValueError("源经验池中没有近威胁转移样本")
         self._invalidate_graph()
         self.risk_replay = replay
         self.critic_risk_weight = float(weight)
@@ -237,10 +237,10 @@ class DDPGAgent:
 
     def load_state_dict(self, state_dict):
         if state_dict.get("algorithm", "ddpg") != getattr(self, "algorithm", "ddpg"):
-            raise ValueError("Checkpoint algorithm mismatch; choose the matching predator_algorithm")
+            raise ValueError("检查点算法不匹配，请选择对应的 predator_algorithm")
         saved_config = state_dict.get("network_config", self.legacy_network_config())
         if saved_config != self.network_config():
-            raise ValueError("Checkpoint network/critic configuration mismatch: saved={!r}, requested={!r}".format(
+            raise ValueError("检查点网络或 Critic 配置不匹配：已保存={!r}，当前请求={!r}".format(
                 saved_config, self.network_config()))
         self._invalidate_graph()
         for name in ("actor", "actor_target", "critic", "critic_target"):
@@ -263,14 +263,14 @@ class DDPGAgent:
         else:
             self.terminal_calibration = None
         if self.critic_terminal_weight and self.terminal_calibration is None:
-            raise ValueError('Checkpoint is missing terminal calibration observations/RNG')
+            raise ValueError("检查点缺少终止值校准观测或随机状态")
         if 'risk_replay' in state_dict:
             from critic_recovery import NearThreatReplay
             self.risk_replay = NearThreatReplay.from_state_dict(state_dict['risk_replay'])
         else:
             self.risk_replay = None
         if self.critic_risk_weight and self.risk_replay is None:
-            raise ValueError('Checkpoint is missing near-threat replay/RNG')
+            raise ValueError("检查点缺少近威胁回放或随机状态")
 
     def update(self, replay_buffer, batch_size, return_losses=True):
         prioritized = getattr(replay_buffer, 'prioritized', False)
@@ -281,11 +281,11 @@ class DDPGAgent:
             batch = replay_buffer.sample(batch_size)
         if self.critic_terminal_weight:
             if self.terminal_calibration is None:
-                raise ValueError('Install terminal calibration before updating')
+                raise ValueError("请先安装终止值校准数据，再执行更新")
             batch = (*batch, *self.terminal_calibration.sample(self.critic_terminal_batch_size))
         if self.critic_risk_weight:
             if self.risk_replay is None:
-                raise ValueError('Install near-threat replay before updating')
+                raise ValueError("请先安装近威胁回放数据，再执行更新")
             batch = (*batch, *self.risk_replay.buffer.sample(self.critic_risk_batch_size))
         if self.cuda_graph and not self._graph_failed:
             from cuda_graph import CudaGraphPreparationError, CudaGraphUpdate, PackedCudaGraphUpdate
@@ -302,8 +302,8 @@ class DDPGAgent:
                     for optimizer in (self.actor_opt, self.critic_opt):
                         for group in optimizer.param_groups:
                             group['capturable'] = False
-                    warnings.warn("CUDA Graph preparation failed; restored training state and "
-                                  "using eager updates: {}".format(error), RuntimeWarning)
+                    warnings.warn("CUDA Graph 准备失败，已恢复训练状态，"
+                                  "改用普通更新：{}".format(error), RuntimeWarning)
                 else:
                     self._graph_runner = runner
                     self.graph_capture_seconds += runner.capture_seconds

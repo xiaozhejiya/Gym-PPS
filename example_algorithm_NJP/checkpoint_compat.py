@@ -1,4 +1,4 @@
-"""Explicit dimensional compatibility without changing legacy state dictionaries."""
+"""显式检查维度兼容性，保留旧版状态字典格式。"""
 from contextlib import contextmanager
 import os
 
@@ -41,18 +41,18 @@ def validate_checkpoint(checkpoint, expected, policy_only=False, allow_capture_c
     saved = checkpoint.get("training", {}).get("structure")
     if saved is None:
         if expected["spatial_dim"] != 2:
-            raise ValueError("Legacy/2D checkpoints cannot initialize the 3D experiment; train a new 3D model")
+            raise ValueError("旧版或二维检查点无法初始化三维实验，请训练新的三维模型")
     else:
         if (not (policy_only or allow_capture_change) and saved.get("capture_rule", "contact-v1")
                 != expected.get("capture_rule", "contact-v1")):
-            raise ValueError("Checkpoint capture_rule mismatch; use --policy_only to transfer "
-                             "actors with fresh critics and replay for the changed reward")
+            raise ValueError("检查点 capture_rule 不匹配，请使用 --policy_only 迁移 Actor，"
+                             "并为变化后的奖励重新初始化 Critic 和经验池")
         for field, value in expected.items():
             if field in ("capture_rule", "capture_cooldown_steps") and (policy_only or allow_capture_change):
                 continue
             actual = saved.get(field, "relu" if field == "hidden_activation" else None)
             if actual != value:
-                raise ValueError("Checkpoint {} mismatch: saved={!r}, requested={!r}".format(field, actual, value))
+                raise ValueError("检查点 {} 不匹配：已保存={!r}，当前请求={!r}".format(field, actual, value))
     for species in ("predator", "prey"):
         actor = checkpoint[species + "_actor"]
         weights = [value for name, value in actor.items() if name.endswith(".weight")]
@@ -60,4 +60,4 @@ def validate_checkpoint(checkpoint, expected, policy_only=False, allow_capture_c
                 or weights[-1].shape[0] != expected["act_dim"]
                 or weights[0].shape[0] != expected["hidden_dim"]
                 or len(weights) != expected["hidden_layers"] + 1):
-            raise ValueError("Checkpoint policy dimensions/network depth do not match the requested environment")
+            raise ValueError("检查点策略维度或网络深度与请求的环境不匹配")

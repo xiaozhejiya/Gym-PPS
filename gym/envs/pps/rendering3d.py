@@ -1,7 +1,7 @@
-"""Independent 3D viewer; importing it does not create an OpenGL context.
+"""独立的三维查看器，导入时不创建 OpenGL 上下文。
 
-Set ``pyglet.options['headless'] = True`` before constructing a viewer when
-recording without a display. Rendering never changes the simulator or its RNG.
+无显示器录制时，请在创建查看器之前设置 pyglet.options['headless'] = True。
+渲染不会修改仿真器或其随机状态。
 """
 
 import math
@@ -10,7 +10,7 @@ import numpy as np
 
 
 def _sphere_mesh(rings=8, sectors=16):
-    """Return one reusable unit sphere and its triangle indices."""
+    """返回可复用的单位球面顶点及三角形索引。"""
     latitude = np.linspace(-np.pi / 2, np.pi / 2, rings + 1)
     longitude = np.linspace(0, 2 * np.pi, sectors, endpoint=False)
     points = np.empty((rings + 1, sectors, 3), dtype=np.float32)
@@ -27,10 +27,10 @@ def _sphere_mesh(rings=8, sectors=16):
 
 
 class Viewer3D:
-    """Perspective viewer with orbit/zoom controls and reusable geometry.
+    """支持环绕、缩放和几何体复用的透视查看器。
 
-    Left drag rotates, the wheel zooms, R resets, and 1/2/3/4 choose XY, XZ,
-    YZ, or the default oblique view. The camera never rotates automatically.
+    左键拖动旋转，滚轮缩放，R 复位，1/2/3/4 分别选择 XY、XZ、
+    YZ 或默认斜视视角。相机不会自动旋转。
     """
 
     def __init__(self, width=640, height=640, visible=True):
@@ -40,11 +40,11 @@ class Viewer3D:
         self._pyglet, self._gl = pyglet, gl
         self.width, self.height = int(width), int(height)
         if self.width <= 0 or self.height <= 0:
-            raise ValueError("viewer width and height must be positive")
+            raise ValueError("查看器的宽度和高度必须为正数")
         config = gl.Config(double_buffer=True, depth_size=24)
         self.window = pyglet.window.Window(
             width=self.width, height=self.height, visible=visible,
-            caption="Gym-PPS 3D", config=config, resizable=True,
+            caption="Gym-PPS 三维仿真", config=config, resizable=True,
         )
         self.isopen = True
         self._half_width = 1.0
@@ -70,11 +70,11 @@ class Viewer3D:
         self.zoom = 1.0
 
     def set_view(self, view):
-        """Select a reproducible view without changing simulation state."""
+        """选择可复现的视角，不修改仿真状态。"""
         angles = {"xy": (0.0, 90.0), "xz": (-90.0, 0.0),
                   "yz": (0.0, 0.0), "oblique": (45.0, 25.0)}
         if view not in angles:
-            raise ValueError("view must be xy, xz, yz, or oblique")
+            raise ValueError("view 必须为 xy、xz、yz 或 oblique")
         self.azimuth, self.elevation = angles[view]
         self.zoom = 1.0
 
@@ -129,7 +129,7 @@ class Viewer3D:
         self._body_colors[env._n_p:env._n_pe] = (0, 85, 198)
         vertices_per_body = len(self._mesh)
         self._body_vertices = np.empty((count, vertices_per_body, 3), dtype=np.float32)
-        # Fixed vertex shading makes the spheres legible without lighting state.
+        # 固定顶点明暗使球体轮廓清晰，无需依赖光照状态。
         shade = 0.65 + 0.35 * np.clip(
             self._mesh @ np.array((0.3, -0.4, 0.866), dtype=np.float32), 0, 1)
         body_colors = np.asarray(self._body_colors[:, None, :] * shade[None, :, None],
@@ -150,7 +150,7 @@ class Viewer3D:
                  if np.count_nonzero(corners[i] != corners[j]) == 1]
         box_vertices = corners[np.asarray(edges)].reshape(-1, 3)
         self._box = self._make_vertices(box_vertices, np.full(box_vertices.shape, 185, np.uint8))
-        # Axes extend slightly beyond the box and use conventional XYZ colors.
+        # 坐标轴略超出场地边框，并使用通用的 XYZ 配色。
         axes = np.zeros((3, 2, 3), dtype=np.float32)
         axes[:, 0, :] = -env._L
         axes[:, 1, :] = -env._L
@@ -165,7 +165,7 @@ class Viewer3D:
         np.add(self._body_vertices, env._p.T[:, None, :], out=self._body_vertices)
         if getattr(env, "_prey_death_enabled", False):
             dead = np.flatnonzero(~env._alive)
-            # Degenerate triangles hide dead bodies without reallocating geometry.
+            # 使用退化三角形隐藏死亡个体，避免重新分配几何缓冲。
             self._body_vertices[dead] = env._p[:, dead].T[:, None, :]
         self._spheres.vertices = self._body_vertices.reshape(-1)
         self._heading_vertices[:, 0, :] = env._p[:, :env._n_pe].T
@@ -189,8 +189,8 @@ class Viewer3D:
             if length > 1:
                 colors = np.empty(self._trail_vertices.shape[:-1] + (4,), dtype=np.uint8)
                 colors[..., :3] = self._body_colors[None, :, None, :]
-                # Older history fades almost completely into the background;
-                # even the newest segment stays quieter than bodies/headings.
+                # 较早的历史轨迹逐渐淡入背景；
+                # 最新线段也保持较低显著度，以突出个体和朝向。
                 alpha = np.linspace(0.025, 0.20, length) * 255
                 colors[:, :, 0, 3] = alpha[:-1, None]
                 colors[:, :, 1, 3] = alpha[1:, None]
@@ -204,7 +204,7 @@ class Viewer3D:
         self._trail_vertices[:, :, 0, :] = trajectory[:-1].transpose(0, 2, 1)
         self._trail_vertices[:, :, 1, :] = trajectory[1:].transpose(0, 2, 1)
         if env._is_periodic:
-            # Degenerate segments have no pixels and preserve the fixed buffer.
+            # 退化线段不产生像素，并保留固定缓冲区。
             crossing = np.any(np.abs(self._trail_vertices[:, :, 1, :]
                                      - self._trail_vertices[:, :, 0, :]) > env._L, axis=2)
             self._trail_vertices[:, :, 1, :][crossing] = self._trail_vertices[:, :, 0, :][crossing]
@@ -254,7 +254,7 @@ class Viewer3D:
             gl.glLineWidth(1.0)
             gl.glEnable(gl.GL_BLEND)
             gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-            # Transparent history must not occlude solid bodies or other trails.
+            # 透明历史轨迹不能遮挡实体或其他轨迹。
             gl.glDepthMask(gl.GL_FALSE)
             try:
                 self._trails.draw(gl.GL_LINES)

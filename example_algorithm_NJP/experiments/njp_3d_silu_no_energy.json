@@ -1,5 +1,5 @@
 {
-  "description": "3D no-energy control with SiLU actor/critic hidden layers and a soft pre-Tanh logit penalty.",
+  "description": "三维无能量对照，Actor 和 Critic 隐藏层使用 SiLU，并对 Tanh 前的输出施加软惩罚。",
   "environment": {
     "dynamics_mode": "Polar",
     "L": 2,

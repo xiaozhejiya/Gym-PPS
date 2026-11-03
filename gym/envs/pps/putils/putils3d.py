@@ -1,10 +1,10 @@
-"""Float64 three-dimensional geometry, independent of the XY native extension."""
+"""采用 float64 的三维几何计算，独立于二维原生扩展。"""
 
 import numpy as np
 
 
 def make_periodic(x, half_width, optimized=True):
-    """Use the original strict comparisons and single subtract-then-add correction."""
+    """沿用原有严格比较，以及先减后加且各执行一次的周期修正。"""
     if optimized:
         np.subtract(x, 2 * half_width, out=x, where=x > half_width)
         np.add(x, 2 * half_width, out=x, where=x < -half_width)
@@ -15,7 +15,7 @@ def make_periodic(x, half_width, optimized=True):
 
 
 def vector_norm(x, axis=0):
-    """Keep the same XYZ addition order for reference and optimized paths."""
+    """参考路径与优化路径使用相同的 XYZ 加法顺序。"""
     xyz = np.moveaxis(x, axis, 0)
     return np.sqrt(xyz[0] ** 2 + xyz[1] ** 2 + xyz[2] ** 2)
 
@@ -31,7 +31,7 @@ def get_dist_b2b_batch(positions, half_width, periodic, pair_sizes):
 
 
 def get_dist_b2w(positions, sizes, half_width):
-    """Penetration and contacts for -X,+X,-Y,+Y,-Z,+Z walls."""
+    """计算 -X、+X、-Y、+Y、-Z、+Z 六面墙的穿透量与接触状态。"""
     negative = sizes[None, :] - (positions + half_width)
     positive = sizes[None, :] - (half_width - positions)
     distances = np.stack((negative, positive), axis=1).reshape(6, -1)
@@ -40,7 +40,7 @@ def get_dist_b2w(positions, sizes, half_width):
 
 def get_focused_batch(positions, headings, field_of_view, width,
                       remove_self, optimized=True):
-    """XYZ neighbors with the original argsort tie and self-removal rules."""
+    """三维邻居选择，沿用原有 argsort 的等距排序及自身排除规则。"""
     shape = (positions.shape[0], width, 3)
     target_positions = np.zeros(shape)
     target_headings = np.zeros(shape)
@@ -72,7 +72,7 @@ def get_focused_batch(positions, headings, field_of_view, width,
 
 
 def rotate_headings(headings, rotation):
-    """Rodrigues rotation for column vectors; zero rotation preserves headings."""
+    """对列向量应用 Rodrigues 旋转；零旋转保持朝向不变。"""
     angles = vector_norm(rotation)
     axes = np.zeros_like(rotation)
     np.divide(rotation, angles[None, :], out=axes, where=angles[None, :] > 0)

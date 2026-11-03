@@ -4,9 +4,9 @@ import numpy as np
 from gym.wrappers import PredatorPreySwarmCustomizer
 from gym.wrappers import CustomObservation, CustomReward, CustomAction
 
-"""Define your own Observation and Reward in this script:
-You may use the following properties to define your observation/reward functions:
-self.env.p, dp, ddp, theta, heading, d_b2b_center, is_collide_b2b, energy
+"""在此脚本中定义观测和奖励。
+可使用以下环境属性构造观测或奖励函数：
+self.env.p、dp、ddp、theta、heading、d_b2b_center、is_collide_b2b、energy。
 """
 
 
@@ -124,6 +124,6 @@ class MyEnv(PredatorPreySwarmCustomizer):
         return speed
     
     def myfunc(self):
-        # define your own function here 
-        # your code here
+        # 在此定义自定义函数
+        # 在此添加自定义代码
         pass

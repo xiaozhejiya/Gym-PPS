@@ -29,29 +29,29 @@ def make_env(experiment=None, evaluation=False, arena_L=None, n_p=None, n_e=None
                            wide_obs=experiment == "njp_3d_silu_wide_obs",
                            capture=experiment == "njp_3d_silu_capture", **spawn)
     if spawn:
-        raise ValueError("spawn overrides require a 3D experiment")
+        raise ValueError("覆盖出生参数需要使用三维实验")
     if n_p is not None or n_e is not None:
-        raise ValueError("population overrides require --experiment njp_3d")
+        raise ValueError("覆盖种群数量需要指定 --experiment njp_3d")
     if experiment == "paper_swirl":
         from paper_swirl import make_env as make_paper_env
         return make_paper_env(evaluation=evaluation, arena_L=arena_L)
     if arena_L is not None:
-        raise ValueError("arena_L requires --experiment paper_swirl")
+        raise ValueError("arena_L 需要指定 --experiment paper_swirl")
     if experiment is not None:
-        raise ValueError("Unknown experiment: " + experiment)
+        raise ValueError("未知的实验：" + experiment)
     # 地图半宽和双方种群规模统一从配置读取，训练与评估共用同一环境定义。
     custom_param = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom_param.json")
     env = gym.make("PredatorPreySwarm-v0")
     env = MyReward(env, custom_param)
     env = MyAction(env, custom_param)
     env = MyObs(env, custom_param)
-    assert env.n_p > 0 and env.n_e > 0, "This shared DDPG script expects at least 1 predator and 1 prey."
+    assert env.n_p > 0 and env.n_e > 0, "此共享 DDPG 脚本要求至少一个捕食者和一个猎物。"
     return env
 
 
 def exploration_rates(args, local_episode, cumulative_episode):
     if args.exploration_mode == "paper":
-        # Match the screened candidate and keep decay continuous on full resume.
+        # 沿用已筛选方案的调度方式，使完整续训时探索衰减连续。
         decrement = args.exploration_decay * cumulative_episode
         return (max(args.noise_min, args.noise - decrement),
                 max(args.epsilon_min, args.epsilon - decrement))
@@ -63,47 +63,47 @@ def train(args):
     profile_path = os.environ.get("NJP_PROFILE")
     phases = dict(inference=0., environment=0., metrics_and_replay=0., updates=0., checkpoints=0.)
     if args.policy_only and not args.init_model:
-        raise ValueError("policy_only requires init_model")
+        raise ValueError("policy_only 需要 init_model")
     reset_replay = getattr(args, "reset_replay", False)
     freeze_predator = getattr(args, "freeze_predator", False)
     prioritized_prey = getattr(args, "prey_replay", "uniform") == "prioritized"
     allow_capture_change = getattr(args, "allow_capture_rule_change", False)
     if freeze_predator and not args.init_model:
-        raise ValueError("freeze_predator requires init_model")
+        raise ValueError("freeze_predator 需要 init_model")
     if allow_capture_change and not (args.init_model and reset_replay and not args.policy_only):
-        raise ValueError("allow_capture_rule_change requires a full init_model and reset_replay")
+        raise ValueError("allow_capture_rule_change 需要完整的 init_model 和 reset_replay")
     if reset_replay and (not args.init_model or args.policy_only):
-        raise ValueError("reset_replay requires a full init_model without policy_only")
+        raise ValueError("reset_replay 需要完整的 init_model，且不能同时指定 policy_only")
     # 在创建环境前校验图执行依赖，避免错误配置启动训练后才失败。
     if args.cuda_graph and (not args.fused_adam or not torch.cuda.is_available()):
-        raise ValueError("cuda_graph requires CUDA and --fused_adam")
+        raise ValueError("cuda_graph 需要 CUDA 和 --fused_adam")
     if args.episodes <= 0 or args.episode_length <= 0:
-        raise ValueError("episodes and episode_length must be positive")
+        raise ValueError("episodes 和 episode_length 必须为正数")
     if args.checkpoint_interval < 0:
-        raise ValueError("checkpoint_interval must be nonnegative")
+        raise ValueError("checkpoint_interval 必须为非负数")
     if args.render_interval < 0:
-        raise ValueError("render_interval must be nonnegative")
+        raise ValueError("render_interval 必须为非负数")
     if args.experiment and (not args.init_model or args.experiment in THREE_D_EXPERIMENTS):
         target = os.path.abspath(os.path.join(os.path.dirname(__file__), args.model_path))
         if os.path.exists(target):
-            raise FileExistsError("Experiment output already exists; choose another --model_path: " + target)
+            raise FileExistsError("实验输出已存在，请选择其他 --model_path：" + target)
     if args.exploration_mode == "paper":
         if (not all(np.isfinite(value) for value in (args.epsilon, args.epsilon_min))
                 or not 0 <= args.epsilon_min <= args.epsilon <= 1):
-            raise ValueError("paper exploration requires 0 <= epsilon_min <= epsilon <= 1")
+            raise ValueError("paper 探索要求 0 <= epsilon_min <= epsilon <= 1")
         if (not all(np.isfinite(value) for value in (args.noise, args.noise_min))
                 or not 0 <= args.noise_min <= args.noise):
-            raise ValueError("paper exploration requires 0 <= noise_min <= noise")
+            raise ValueError("paper 探索要求 0 <= noise_min <= noise")
         if not np.isfinite(args.exploration_decay) or args.exploration_decay < 0:
-            raise ValueError("exploration_decay must be finite and nonnegative")
+            raise ValueError("exploration_decay 必须是有限的非负数")
     # total_steps 可缩短最后一回合，使本次新增训练步数精确落在预算内。
     planned_steps = args.episodes * args.episode_length
     if args.total_steps is not None:
         if not 0 < args.total_steps <= planned_steps:
-            raise ValueError("total_steps must be positive and no larger than episodes * episode_length")
+            raise ValueError("total_steps 必须为正数，且不大于 episodes * episode_length")
         planned_steps = args.total_steps
     if args.experiment in THREE_D_EXPERIMENTS and planned_steps % args.episode_length:
-        raise ValueError("3D training must finish at a complete episode boundary")
+        raise ValueError("三维训练必须在完整回合边界结束")
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -118,7 +118,7 @@ def train(args):
         env = make_env(args.experiment) if args.experiment else make_env()
     learn_predator = env.pursuer_strategy == "input" and not freeze_predator
     if freeze_predator and env.pursuer_strategy != "input":
-        raise ValueError("freeze_predator requires an input-controlled predator")
+        raise ValueError("freeze_predator 要求捕食者使用 input 控制器")
     learn_prey = env.escaper_strategy == "input"
     prey_death = getattr(env.unwrapped, "prey_death_enabled", False)
     obs = env.reset()
@@ -191,7 +191,7 @@ def train(args):
             init_model = os.path.join(os.path.dirname(__file__), init_model)
         init_model = os.path.abspath(init_model)
         if init_model == output_model:
-            raise ValueError("model_path must differ from init_model to preserve the source checkpoint")
+            raise ValueError("model_path 必须与 init_model 不同，以保留源检查点")
         # 完整检查点还包含大容量回放缓冲，先加载到 CPU，避免占用额外显存。
         try:
             checkpoint = torch.load(init_model, map_location="cpu", weights_only=True)
@@ -200,20 +200,20 @@ def train(args):
         critic_repair_info = checkpoint.get('training', {}).get('critic_repair')
         if (critic_repair_info and critic_repair_info.get('status') != 'accepted'
                 and not getattr(args, 'freeze_prey_actor', False) and not args.policy_only):
-            raise ValueError('Critic repair has not passed policy-update validation; keep --freeze_prey_actor')
+            raise ValueError("Critic 修复尚未通过策略更新验证，请保留 --freeze_prey_actor")
         if checkpoint.get("kind") == "policy_transfer_only" and not args.policy_only:
-            raise ValueError("Actor-only transfer checkpoint requires --policy_only; it has no joint optimizer/replay state")
+            raise ValueError("仅含 Actor 的迁移检查点需要 --policy_only，其中不包含联合优化器或经验池状态")
         validate_checkpoint(checkpoint, expected_structure, policy_only=args.policy_only,
                             allow_capture_change=allow_capture_change)
         if reset_replay and "training_state" not in checkpoint:
-            raise ValueError("reset_replay requires a checkpoint with full training_state")
+            raise ValueError("reset_replay 需要包含完整 training_state 的检查点")
         if args.experiment in THREE_D_EXPERIMENTS:
             previous = checkpoint.get("training", {})
             if (previous.get("last_episode_steps", args.episode_length)
                     != previous.get("episode_length", args.episode_length)
                     and not (prey_death and (previous.get("episode_boundary", False)
                                             or args.policy_only))):
-                raise ValueError("3D continuation requires a checkpoint at a complete episode boundary")
+                raise ValueError("三维续训需要位于完整回合边界的检查点")
         predator_agent.load_policy(checkpoint["predator_actor"])
         prey_agent.load_policy(checkpoint["prey_actor"])
         # 兼容旧检查点：优先取累计计数，缺失时再使用单次运行计数或从零开始。
@@ -269,28 +269,28 @@ def train(args):
                 random_warmup = saved_args.get("init_model") is None
             restored_training_state = True
             if reset_replay:
-                print(f"Restored policies, critics, optimizers and RNG from {init_model}; replay buffers start empty.")
+                print(f"已从 {init_model} 恢复策略、Critic、优化器和随机状态；经验池从空状态开始。")
             else:
-                print(f"Restored policies, critics, optimizers and replay buffers from {init_model}.")
+                print(f"已从 {init_model} 恢复策略、Critic、优化器和经验池。")
             del state
         else:
-            print(f"Loaded both policies from {init_model}; critics, optimizers and replay buffers start fresh.")
+            print(f"已从 {init_model} 加载双方策略；Critic、优化器和经验池重新初始化。")
         del checkpoint
 
     if prey_agent.terminal_calibration is not None:
         if (not prey_death or not env.is_periodic or getattr(env.unwrapped, 'capture_cooldown_steps', 0)
                 or env.L != prey_agent.terminal_calibration.arena_L
                 or not np.isclose(env.size_p + env.size_e, .095, atol=1e-15, rtol=0)):
-            raise ValueError('Terminal calibration requires its original periodic L and 0.095 first-contact capture rule without cooldown')
+            raise ValueError("终止值校准要求原有周期场地半宽 L，以及无冷却、接触距离为 0.095 的首次接触捕获规则")
     prey_agent.set_actor_updates(not getattr(args, 'freeze_prey_actor', False))
 
     print(
-        f"NvsN PPS: n_p={env.n_p}, n_e={env.n_e}, obs_dim={obs_dim}, "
-        f"shared_action_dim={act_dim}, L={env.L}, device={device}, "
-        f"adam_backend={'fused' if predator_agent.fused_adam else 'default'}, "
-        f"previous_env_steps={previous_steps}, planned_env_steps={planned_steps}, "
-        f"target_cumulative_env_steps={previous_steps + planned_steps}, render_interval={args.render_interval}, "
-        f"cuda_graph_requested={args.cuda_graph}, exploration_mode={args.exploration_mode}"
+        f"多对多 PPS：捕食者数={env.n_p}，猎物数={env.n_e}，观测维度={obs_dim}， "
+        f"共享动作维度={act_dim}，L={env.L}，设备={device}， "
+        f"Adam 后端={'fused' if predator_agent.fused_adam else 'default'}， "
+        f"历史环境步数={previous_steps}，计划环境步数={planned_steps}， "
+        f"目标累计环境步数={previous_steps + planned_steps}，渲染间隔={args.render_interval}， "
+        f"已请求 CUDA Graph={args.cuda_graph}，探索模式={args.exploration_mode}"
     )
     total_steps = 0
     best_min_distance = float("inf")
@@ -390,7 +390,7 @@ def train(args):
             torch.save(checkpoint, temporary_path)
             os.replace(temporary_path, output_model)
         phases["checkpoints"] += time.perf_counter() - save_started
-        print(f"Saved checkpoint: cumulative_env_steps={previous_steps + total_steps}, path={output_model}")
+        print(f"已保存检查点：累计环境步数={previous_steps + total_steps}，路径={output_model}")
 
     loop_started = time.perf_counter()
     local_episode = 0
@@ -413,7 +413,7 @@ def train(args):
         render_episode = args.render or (args.render_interval > 0 and episode % args.render_interval == 0)
         if render_episode:
             rendered_episodes.append(episode)
-            print(f"Rendering episode {episode}")
+            print(f"正在渲染第 {episode} 回合")
 
         episode_terminal = False
         for step_index in range(episode_steps):
@@ -511,11 +511,11 @@ def train(args):
         best_min_distance = min(best_min_distance, min_distance)
         if episode % 10 == 0 or caught_once or args.experiment in THREE_D_EXPERIMENTS:
             print(
-                f"episode={episode:04d} pred_reward={episode_reward:8.3f} "
-                f"prey_reward={episode_prey_reward:8.3f} "
-                f"min_dist={min_distance:.4f} best={best_min_distance:.4f} "
-                f"caught={caught_once} noise={noise:.3f} epsilon={epsilon:.3f} "
-                f"cumulative_steps={previous_steps + total_steps}"
+                f"回合={episode:04d} 捕食者奖励={episode_reward:8.3f} "
+                f"猎物奖励={episode_prey_reward:8.3f} "
+                f"最小距离={min_distance:.4f} 最佳距离={best_min_distance:.4f} "
+                f"已捕获={caught_once} 噪声={noise:.3f} 随机动作概率={epsilon:.3f} "
+                f"累计步数={previous_steps + total_steps}"
             )
         completed_episodes = local_episode
         # 最后一回合交给循环后的统一保存，避免同一步数重复写入大检查点。
@@ -541,12 +541,12 @@ def train(args):
         os.makedirs(os.path.dirname(os.path.abspath(profile_path)), exist_ok=True)
         with open(profile_path, "w") as handle:
             json.dump(profile, handle, indent=2)
-    print(f"Saved {args.model_path}; completed_env_steps={total_steps}, "
-          f"cumulative_env_steps={previous_steps + total_steps}, rendered_episodes={rendered_episodes}")
+    print(f"已保存 {args.model_path}；完成环境步数={total_steps}， "
+          f"累计环境步数={previous_steps + total_steps}，已渲染回合={rendered_episodes}")
     if args.cuda_graph:
-        print(f"CUDA Graph: predator={predator_agent.cuda_graph_status if learn_predator else 'fixed:' + env.pursuer_strategy}, "
-              f"prey={prey_agent.cuda_graph_status if learn_prey else 'fixed:' + env.escaper_strategy}, "
-              f"capture_seconds={predator_agent.graph_capture_seconds + prey_agent.graph_capture_seconds:.3f}")
+        print(f"CUDA Graph：捕食者={predator_agent.cuda_graph_status if learn_predator else 'fixed:' + env.pursuer_strategy}， "
+              f"猎物={prey_agent.cuda_graph_status if learn_prey else 'fixed:' + env.escaper_strategy}， "
+              f"捕获耗时（秒）={predator_agent.graph_capture_seconds + prey_agent.graph_capture_seconds:.3f}")
 
 
 if __name__ == "__main__":
