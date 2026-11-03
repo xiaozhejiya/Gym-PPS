@@ -4,9 +4,9 @@ import numpy as np
 from gym.wrappers import PredatorPreySwarmCustomizer
 from gym.wrappers import CustomObservation, CustomReward, CustomAction
 
-"""Define your own Observation and Reward in this script:
-You may use the following properties to define your observation/reward functions:
-self.env.p, dp, ddp, theta, heading, d_b2b_center, is_collide_b2b, energy
+"""在此脚本中定义观测和奖励。
+可使用以下环境属性构造观测或奖励函数：
+self.env.p、dp、ddp、theta、heading、d_b2b_center、is_collide_b2b、energy。
 """
 
 
@@ -37,7 +37,10 @@ def predator_prey_pair_distances(env):
     if env.is_periodic:
         rel[rel > env.L] -= 2 * env.L
         rel[rel < -env.L] += 2 * env.L
-    return np.linalg.norm(rel, axis=0).astype(np.float32)
+    distances = np.linalg.norm(rel, axis=0).astype(np.float32)
+    if getattr(env.unwrapped, "prey_death_enabled", False):
+        distances[:, ~env.unwrapped.alive_mask[env.n_p:env.n_pe]] = np.inf
+    return distances
 
 
 def predator_prey_distances(env):
@@ -90,10 +93,11 @@ class MyAction(CustomAction):
 
     def __reinit__(self):
         super().__reinit__()
+        action_dim = self.env.action_space.shape[0]
         self.action_space = spaces.Dict(
             {
-                "predator": spaces.Box(shape=(2, self.env.n_p), low=-1.0, high=1.0, dtype=np.float32),
-                "prey": spaces.Box(shape=(2, self.env.n_e), low=-1.0, high=1.0, dtype=np.float32),
+                "predator": spaces.Box(shape=(action_dim, self.env.n_p), low=-1.0, high=1.0, dtype=np.float32),
+                "prey": spaces.Box(shape=(action_dim, self.env.n_e), low=-1.0, high=1.0, dtype=np.float32),
             }
         )
 
@@ -113,10 +117,13 @@ class MyEnv(PredatorPreySwarmCustomizer):
         super().__init__(env, args)
 
     def compute_speed(self):
-        speed = np.sqrt(self.env.dp[[0],:]**2 + self.env.dp[[1],:]**2)
+        if self.env.dp.shape[0] == 2:
+            speed = np.sqrt(self.env.dp[[0],:]**2 + self.env.dp[[1],:]**2)
+        else:
+            speed = np.linalg.norm(self.env.dp, axis=0, keepdims=True)
         return speed
     
     def myfunc(self):
-        # define your own function here 
-        # your code here
+        # 在此定义自定义函数
+        # 在此添加自定义代码
         pass

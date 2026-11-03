@@ -298,6 +298,28 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
         forces[columns, :, rows] = -pair_force.T
         return forces.sum(axis=2).T
 
+    def _set_nearest_pursuer_action(self, a):
+        ind_nearest = np.argmin(self._d_b2b_center[:self._n_p, self._n_p:self._n_pe], axis=1)
+        goto_pos = self._p[:, self._n_p + ind_nearest] - self._p[:, :self._n_p]
+        if self._is_periodic:
+            goto_pos = make_periodic(goto_pos, self._L)
+        ranges = np.sqrt(goto_pos[[0], :] ** 2 + goto_pos[[1], :] ** 2)
+        goto_dir = goto_pos / ranges
+        if self._dynamics_mode == 'Cartesian':
+            a[:, :self._n_p] = 1 * goto_dir
+        elif self._dynamics_mode == 'Polar':
+            goto_dir = np.concatenate((goto_dir, np.zeros((1, self._n_p))), axis=0).T
+            heading = np.concatenate((self._heading[:, :self._n_p], np.zeros((1, self._n_p))), axis=0).T
+            desired_rotate_angle = np.cross(heading, goto_dir)[:, -1]
+            desired_rotate_angle[desired_rotate_angle > self._angle_p_max] = self._angle_p_max
+            desired_rotate_angle[desired_rotate_angle < -self._angle_p_max] = -self._angle_p_max
+            a[0, :self._n_p] = desired_rotate_angle
+            a[1, :self._n_p] = self._linAcc_p_max
+
+    def _limit_velocity(self):
+        self._dp[:, :self._n_p] = np.clip(self._dp[:, :self._n_p], -self._linVel_p_max, self._linVel_p_max)
+        self._dp[:, self._n_p:self._n_pe] = np.clip(self._dp[:, self._n_p:self._n_pe], -self._linVel_e_max, self._linVel_e_max)
+
 
     def step(self, a):  
         for _ in range(self._n_frames): 
@@ -324,22 +346,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
                     a[0, :self._n_p] *= self._angle_p_max
                     a[1, :self._n_p] = (self._linAcc_p_max-self._linAcc_p_min)/2 * a[1,:self._n_p] + (self._linAcc_p_max+self._linAcc_p_min)/2 
             elif self.pursuer_strategy == 'nearest':
-                ind_nearest = np.argmin( self._d_b2b_center[:self._n_p, self._n_p:self._n_pe], axis=1)
-                goto_pos =  self._p[:, self._n_p+ind_nearest] - self._p[:,:self._n_p]   
-                if self._is_periodic == True:
-                    goto_pos = make_periodic( goto_pos, self._L )
-                ranges = np.sqrt( goto_pos[[0],:]**2 + goto_pos[[1],:]**2 )
-                goto_dir = goto_pos / ranges   
-                if self._dynamics_mode == 'Cartesian':
-                    a[:,:self._n_p] = 1 * goto_dir
-                elif self._dynamics_mode == 'Polar':
-                    goto_dir = np.concatenate( (goto_dir, np.zeros((1,self._n_p))), axis=0 ).T 
-                    heading = np.concatenate( (self._heading[:,:self._n_p], np.zeros((1, self._n_p))), axis=0 ).T
-                    desired_rotate_angle = np.cross(heading, goto_dir)[:,-1] 
-                    desired_rotate_angle[desired_rotate_angle>self._angle_p_max] = self._angle_p_max
-                    desired_rotate_angle[desired_rotate_angle<-self._angle_p_max] = -self._angle_p_max
-                    a[0, :self._n_p] = desired_rotate_angle
-                    a[1, :self._n_p] = self._linAcc_p_max
+                self._set_nearest_pursuer_action(a)
             else:
                 print('Wrong in Step function')
                     
@@ -395,8 +402,7 @@ class PredatorPreySwarmEnv(PredatorPreySwarmEnvProp):
             self._dp += self._ddp * self._dt
             if self._obstacles_cannot_move:
                 self._dp[:, self._n_pe:self._n_peo] = 0
-            self._dp[:,:self._n_p] = np.clip(self._dp[:,:self._n_p], -self._linVel_p_max, self._linVel_p_max)
-            self._dp[:,self._n_p:self._n_pe] = np.clip(self._dp[:,self._n_p:self._n_pe], -self._linVel_e_max, self._linVel_e_max)
+            self._limit_velocity()
             energy = np.tile(self._energy, (2,1))
             self._dp[:,:self._n_pe][energy<0.5] = 0
             speeds = np.sqrt( self._dp[[0],:self._n_pe]**2 + self._dp[[1],:self._n_pe]**2 )

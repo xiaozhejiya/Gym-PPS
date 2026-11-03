@@ -21,6 +21,8 @@ Gym-PPS is a lightweight **Predator-Prey Swarm (PPS)** environment fully compati
 
 ## Changelog
 
+20261103: add 3D predator-prey environments, dual-policy training, checkpoint continuation and GIF evaluation.
+
 20260609: add tutorial example: 1v1 Predator-prey Game, Improve RL algorithm.
 
 20251219: add tutorial examples: how to use PPS and implement RL algorithm; improve RL algorithm. 
@@ -306,6 +308,66 @@ to see the prey agents embrace the swarm mind:
   </tr>
 </table>
 
+
+
+### 3D swarm training
+
+The `njp_3d` preset adds an independent `PredatorPreySwarm3D-v0` environment
+with 3D motion, collisions, neighborhood observations and interactive rendering.
+Predators and prey each learn a shared DDPG policy. Each agent receives 52
+observation features and outputs four actions: a three-component rotation vector
+and forward propulsion. Existing 2D examples remain available.
+
+The default scene contains **16 predators and 160 prey** in a periodic cube
+with `L=2`, spanning **[-2, 2] on each axis**. The preset trains for 200,000
+environment steps and supports full-checkpoint continuation, optional TD3 for
+the predators, and priority replay for the prey. Additional presets provide
+SiLU networks, wider observations, disabled energy consumption and prey removal
+on capture; see [the runtime configurations](example_algorithm_NJP/experiments).
+
+<p align="center">
+  <img src="example_algorithm_NJP/njp_3d_training.gif" alt="Trained predator and prey policies moving in a 3D periodic arena" width="640">
+</p>
+
+*Eight-second excerpt from an early 200,000-step training run (training seed 1;
+orange predators, blue prey). This run used a predator/prey mass ratio of 3:1;
+the current `njp_3d` preset uses 1:1. The animation illustrates observed behavior,
+without establishing convergence or reproduction of the paper's swarming results.*
+
+Run these commands from the repository root, with PyTorch installed:
+
+```bash
+python example_algorithm_NJP/train.py --experiment njp_3d \
+  --seed 1 --model_path ddpg_njp_3d.pt
+```
+
+The preset enables fused Adam and CUDA Graph on a compatible CUDA setup.
+For CPU training, add `--no_fused_adam --no_cuda_graph`.
+Use `--n_p`, `--n_e` and `--arena_L` to change the population and arena size;
+use the same settings for evaluation. Relative model paths are resolved inside
+`example_algorithm_NJP`. To continue a compatible 3D checkpoint, pass
+`--init_model` and a different `--model_path`. Existing 2D checkpoints cannot
+initialize a 3D policy.
+
+View the trained policies interactively:
+
+```bash
+python example_algorithm_NJP/eval.py --experiment njp_3d \
+  --model_path ddpg_njp_3d.pt --render
+```
+
+For GIF recording, install Pillow (`pip install Pillow`), then run:
+
+```bash
+python example_algorithm_NJP/eval.py --experiment njp_3d \
+  --model_path ddpg_njp_3d.pt --headless --device cpu \
+  --episodes 1 --episode_length 400 --gif_stride 2 --gif_fps 25 \
+  --gif_path logs/njp_3d.gif
+```
+
+This records an eight-second GIF using an offscreen OpenGL context. In the
+interactive viewer, drag to orbit, scroll to zoom, and use keys 1–4 to switch
+between XY, XZ, YZ and oblique views.
 
 
 We hope you enjoy this project. Should you find it helpful for your research, we would appreciate your citation of the following paper, which helps other researchers find us.

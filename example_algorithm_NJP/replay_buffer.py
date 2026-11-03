@@ -3,7 +3,7 @@ import torch
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, obs_dim, act_dim):
+    def __init__(self, capacity, obs_dim, act_dim, seed=None):
         self.capacity = int(capacity)
         self.obs = np.zeros((self.capacity, obs_dim), dtype=np.float32)
         self.actions = np.zeros((self.capacity, act_dim), dtype=np.float32)
@@ -12,6 +12,7 @@ class ReplayBuffer:
         self.dones = np.zeros((self.capacity, 1), dtype=np.float32)
         self.ptr = 0
         self.size = 0
+        self._rng = None if seed is None else np.random.RandomState(seed)
 
     def __len__(self):
         return self.size
@@ -35,15 +36,15 @@ class ReplayBuffer:
         actions = np.asarray(actions, dtype=np.float32)
         following = np.asarray(next_obs, dtype=np.float32)
         if observations.ndim != 2 or observations.shape[1:] != self.obs.shape[1:]:
-            raise ValueError('obs must have shape (batch, obs_dim)')
+            raise ValueError("obs 的形状必须为 (batch, obs_dim)")
         count = observations.shape[0]
         if actions.shape != (count, self.actions.shape[1]):
-            raise ValueError('actions must have shape (batch, act_dim)')
+            raise ValueError("actions 的形状必须为 (batch, act_dim)")
         if following.shape != observations.shape:
-            raise ValueError('next_obs must have the same shape as obs')
+            raise ValueError("next_obs 的形状必须与 obs 相同")
         rewards = np.asarray(rewards, dtype=np.float32)
         if rewards.shape not in ((count,), (count, 1)):
-            raise ValueError('rewards must have shape (batch,) or (batch, 1)')
+            raise ValueError("rewards 的形状必须为 (batch,) 或 (batch, 1)")
         rewards = rewards.reshape(count, 1)
         dones = np.asarray(dones, dtype=np.float32)
         if dones.ndim == 0:
@@ -51,7 +52,7 @@ class ReplayBuffer:
         elif dones.shape in ((count,), (count, 1)):
             dones = dones.reshape(count, 1)
         else:
-            raise ValueError('dones must be scalar, (batch,) or (batch, 1)')
+            raise ValueError("dones 必须是标量，或形状为 (batch,) 或 (batch, 1)")
         if not count:
             return
         sources = (observations, actions, rewards, following, dones)
@@ -75,7 +76,8 @@ class ReplayBuffer:
         self.size = min(self.size + count, self.capacity)
 
     def sample(self, batch_size):
-        idx = np.random.randint(0, self.size, size=batch_size)
+        rng = np.random if self._rng is None else self._rng
+        idx = rng.randint(0, self.size, size=batch_size)
         return (
             self.obs[idx],
             self.actions[idx],
@@ -90,7 +92,7 @@ class ReplayBuffer:
         张量与原 NumPy 数组共享内存，调用方应在下一次写入前完成序列化。
         使用张量还可使检查点兼容 torch.load(weights_only=True)。
         """
-        return {
+        state = {
             "capacity": self.capacity,
             "ptr": self.ptr,
             "size": self.size,
@@ -99,17 +101,27 @@ class ReplayBuffer:
                 for name in ("obs", "actions", "rewards", "next_obs", "dones")
             },
         }
+        if self._rng is not None:
+            rng = self._rng.get_state()
+            state['sampling_rng'] = (rng[0], rng[1].tolist(), *rng[2:])
+        return state
 
     def load_state_dict(self, state_dict):
+        if 'prioritization' in state_dict and not getattr(self, 'prioritized', False):
+            raise ValueError("优先回放需要 PrioritizedReplayBuffer 或 --reset_replay")
         # 容量决定环形覆盖顺序；强制保持一致，才能还原后续写入和采样的行为。
         if self.capacity != state_dict["capacity"]:
-            raise ValueError("buffer_size must match the saved replay buffer capacity")
+            raise ValueError("buffer_size 必须与检查点中的经验池容量一致")
         size = state_dict["size"]
         for name in ("obs", "actions", "rewards", "next_obs", "dones"):
             destination = getattr(self, name)
             source = state_dict["arrays"][name].cpu().numpy()
             if source.shape != destination[:size].shape:
-                raise ValueError("Saved replay buffer dimensions do not match the environment")
+                raise ValueError("已保存经验池的维度与环境不匹配")
             destination[:size] = source
         self.ptr = state_dict["ptr"]
         self.size = size
+        if 'sampling_rng' in state_dict:
+            rng = state_dict['sampling_rng']
+            self._rng = np.random.RandomState(0)
+            self._rng.set_state((rng[0], np.asarray(rng[1], dtype=np.uint32), *rng[2:]))
