@@ -29,8 +29,7 @@ class CudaGraphUpdate:
         started = time.perf_counter()
         self.signature = signature
         try:
-            self.inputs = tuple(torch.as_tensor(value, dtype=torch.float32, device=agent.device).clone()
-                                for value in batch)
+            self._prepare_inputs(agent, batch)
             self.graph = torch.cuda.CUDAGraph()
             # 准备时会试跑更新，先独立备份训练状态和随机状态，避免额外训练。
             snapshot = deepcopy(agent.state_dict())
@@ -39,11 +38,11 @@ class CudaGraphUpdate:
             cuda_rng = torch.cuda.get_rng_state_all()
             # 图内核记录的是张量地址，正常恢复时必须保留现有张量对象。
             parameter_values = [(parameter, parameter.detach().clone())
-                                for network in (agent.actor, agent.actor_target, agent.critic, agent.critic_target)
+                                for network in agent._graph_networks()
                                 for parameter in network.parameters()]
             optimizer_values = [(optimizer, {parameter: deepcopy(state)
                                             for parameter, state in optimizer.state.items()})
-                                for optimizer in (agent.actor_opt, agent.critic_opt)]
+                                for optimizer in agent._graph_optimizers()]
         except Exception as error:
             # 此阶段还未修改训练值或随机状态；可恢复的分配失败允许回退。
             # 同步若暴露不可恢复的 CUDA 错误，则继续向外抛出。
@@ -88,7 +87,7 @@ class CudaGraphUpdate:
             # 同步或恢复失败必须向外抛出，不能在状态不确定时重试更新。
             torch.cuda.synchronize(agent.device)
             agent.load_state_dict(snapshot)
-            for network in (agent.actor, agent.critic):
+            for network in agent._graph_networks():
                 for parameter in network.parameters():
                     parameter.grad = None
             raise CudaGraphPreparationError(str(error)) from error
@@ -99,9 +98,57 @@ class CudaGraphUpdate:
             torch.cuda.set_rng_state_all(cuda_rng)
         self.capture_seconds = time.perf_counter() - started
 
-    def replay(self, batch):
-        """原地填充固定输入并回放一次；回放错误由调用方直接向外抛出。"""
+    def _prepare_inputs(self, agent, batch):
+        self.inputs = tuple(torch.as_tensor(value, dtype=torch.float32, device=agent.device).clone()
+                            for value in batch)
+
+    def _copy_inputs(self, batch):
         for destination, source in zip(self.inputs, batch):
             destination.copy_(torch.as_tensor(source, dtype=torch.float32))
+
+    def replay(self, batch):
+        """原地填充固定输入并回放一次；回放错误由调用方直接向外抛出。"""
+        self._copy_inputs(batch)
         self.graph.replay()
         return self.losses
+
+
+class PackedCudaGraphUpdate(CudaGraphUpdate):
+    """Upload one pinned, contiguous batch without changing graph arithmetic.
+
+    The host buffer is reused only after its previous DMA has completed. A
+    stream change also orders the new upload after the previous graph replay;
+    ordinary same-stream updates need no full-device synchronization.
+    """
+
+    def _prepare_inputs(self, agent, batch):
+        self._device = agent.device
+        sizes = [int(np.prod(value.shape)) for value in batch]
+        total = sum(sizes)
+        self._host_storage = torch.empty(total, dtype=torch.float32, pin_memory=True)
+        self._device_storage = torch.empty(total, dtype=torch.float32, device=agent.device)
+        host, device = [], []
+        offset = 0
+        for value, size in zip(batch, sizes):
+            host.append(self._host_storage[offset:offset + size].view(value.shape).numpy())
+            device.append(self._device_storage[offset:offset + size].view(value.shape))
+            offset += size
+        self._host_views = tuple(host)
+        self.inputs = tuple(device)
+        self._copy_complete = torch.cuda.Event()
+        self._copy_pending = False
+        self._last_stream = None
+        self._copy_inputs(batch)
+
+    def _copy_inputs(self, batch):
+        if self._copy_pending:
+            self._copy_complete.synchronize()
+        for destination, source in zip(self._host_views, batch):
+            np.copyto(destination, source, casting="unsafe")
+        stream = torch.cuda.current_stream(self._device)
+        if self._last_stream is not None and self._last_stream != stream:
+            stream.wait_stream(self._last_stream)
+        self._device_storage.copy_(self._host_storage, non_blocking=True)
+        self._copy_complete.record(stream)
+        self._copy_pending = True
+        self._last_stream = stream

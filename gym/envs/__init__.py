@@ -51,6 +51,11 @@ register(
     reward_threshold=None,  
 )
 
+register(
+    id="PredatorPreySwarm3D-v0",
+    entry_point="gym.envs.pps.pps3d:PredatorPreySwarm3DEnv",
+)
+
 # Box2d
 # ----------------------------------------
 

@@ -3,7 +3,7 @@ import torch
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, obs_dim, act_dim):
+    def __init__(self, capacity, obs_dim, act_dim, seed=None):
         self.capacity = int(capacity)
         self.obs = np.zeros((self.capacity, obs_dim), dtype=np.float32)
         self.actions = np.zeros((self.capacity, act_dim), dtype=np.float32)
@@ -12,6 +12,7 @@ class ReplayBuffer:
         self.dones = np.zeros((self.capacity, 1), dtype=np.float32)
         self.ptr = 0
         self.size = 0
+        self._rng = None if seed is None else np.random.RandomState(seed)
 
     def __len__(self):
         return self.size
@@ -75,7 +76,8 @@ class ReplayBuffer:
         self.size = min(self.size + count, self.capacity)
 
     def sample(self, batch_size):
-        idx = np.random.randint(0, self.size, size=batch_size)
+        rng = np.random if self._rng is None else self._rng
+        idx = rng.randint(0, self.size, size=batch_size)
         return (
             self.obs[idx],
             self.actions[idx],
@@ -90,7 +92,7 @@ class ReplayBuffer:
         张量与原 NumPy 数组共享内存，调用方应在下一次写入前完成序列化。
         使用张量还可使检查点兼容 torch.load(weights_only=True)。
         """
-        return {
+        state = {
             "capacity": self.capacity,
             "ptr": self.ptr,
             "size": self.size,
@@ -99,8 +101,14 @@ class ReplayBuffer:
                 for name in ("obs", "actions", "rewards", "next_obs", "dones")
             },
         }
+        if self._rng is not None:
+            rng = self._rng.get_state()
+            state['sampling_rng'] = (rng[0], rng[1].tolist(), *rng[2:])
+        return state
 
     def load_state_dict(self, state_dict):
+        if 'prioritization' in state_dict and not getattr(self, 'prioritized', False):
+            raise ValueError('Prioritized replay requires PrioritizedReplayBuffer or --reset_replay')
         # 容量决定环形覆盖顺序；强制保持一致，才能还原后续写入和采样的行为。
         if self.capacity != state_dict["capacity"]:
             raise ValueError("buffer_size must match the saved replay buffer capacity")
@@ -113,3 +121,7 @@ class ReplayBuffer:
             destination[:size] = source
         self.ptr = state_dict["ptr"]
         self.size = size
+        if 'sampling_rng' in state_dict:
+            rng = state_dict['sampling_rng']
+            self._rng = np.random.RandomState(0)
+            self._rng.set_state((rng[0], np.asarray(rng[1], dtype=np.uint32), *rng[2:]))
