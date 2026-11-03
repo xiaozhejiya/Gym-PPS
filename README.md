@@ -325,14 +325,47 @@ the predators, and priority replay for the prey. Additional presets provide
 SiLU networks, wider observations, disabled energy consumption and prey removal
 on capture; see [the runtime configurations](example_algorithm_NJP/experiments).
 
+#### Published weights demo
+
 <p align="center">
-  <img src="example_algorithm_NJP/njp_3d_training.gif" alt="Trained predator and prey policies moving in a 3D periodic arena" width="640">
+  <img src="example_algorithm_NJP/njp_3d_training.gif" alt="Published 400k-step policies: 4 predators pursuing 160 prey in a 3D periodic arena" width="640">
 </p>
 
-*Eight-second excerpt from an early 200,000-step training run (training seed 1;
-orange predators, blue prey). This run used a predator/prey mass ratio of 3:1;
-the current `njp_3d` preset uses 1:1. The animation illustrates observed behavior,
-without establishing convergence or reproduction of the paper's swarming results.*
+This animation uses the [published Actor weights](https://github.com/xiaozhejiya/Gym-PPS/releases/tag/njp3d-weights-20261103),
+`njp3d_4p160e_L2_seed1_400k_thrust_edited.pt`: training seed 1, 400,000 steps,
+followed by a direct edit to the predator's thrust output layer. The prey
+policy is unchanged. The demo has **4 orange predators and 160 blue prey**,
+178-dimensional SiLU policies, a 1:1 mass ratio, `L=2`, disabled energy
+consumption and prey removal on first contact. Prey spawn in a central ball;
+predators spawn in an outer shell.
+
+*Recorded directly from the downloaded release checkpoint, with evaluation
+seed 2001 and no exploration noise: 1,000 environment steps, every fifth step
+recorded at 25 fps (8 seconds). This is an experimental policy demonstration.*
+
+To reproduce this GIF from the repository root, install PyTorch and Pillow,
+and download the checkpoint using the GitHub CLI:
+
+```bash
+mkdir -p models/njp3d-release
+gh release download njp3d-weights-20261103 --repo xiaozhejiya/Gym-PPS \
+  --pattern njp3d_4p160e_L2_seed1_400k_thrust_edited.pt \
+  --dir models/njp3d-release
+
+python example_algorithm_NJP/eval.py --experiment njp_3d_silu_capture \
+  --model_path ../models/njp3d-release/njp3d_4p160e_L2_seed1_400k_thrust_edited.pt \
+  --n_p 4 --n_e 160 --arena_L 2 --spawn_mode cluster_shell \
+  --prey_spawn_radius 1 --predator_spawn_inner 1.5 --predator_spawn_outer 1.8 \
+  --capture_cooldown_steps 0 --seed 2001 --episodes 1 --episode_length 1000 \
+  --headless --device cpu --camera_view oblique --gif_stride 5 --gif_fps 25 \
+  --gif_path logs/njp_3d_release.gif
+```
+
+The release contains Actor weights only. To start new training from them, use
+`--policy_only` with `--init_model` and matching environment/network settings;
+it cannot resume the original optimizer or replay state.
+
+#### Train from scratch
 
 Run these commands from the repository root, with PyTorch installed:
 
